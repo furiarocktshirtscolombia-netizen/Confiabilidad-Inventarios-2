@@ -93,8 +93,8 @@ function MultiSelect({
         onClick={() => setOpen(!open)}
         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-[11px] font-black uppercase tracking-tight transition-all ${
           value.length > 0 
-            ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-600/20' 
-            : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'
+            ? 'bg-brand-primary border-brand-primary text-white shadow-lg shadow-brand-primary/20' 
+            : 'bg-white border-slate-200 text-brand-muted hover:border-slate-400'
         }`}
       >
         {label}{value.length ? ` (${value.length})` : ""}
@@ -104,12 +104,12 @@ function MultiSelect({
       {open && (
         <div className="absolute z-[60] mt-2 w-64 max-h-72 overflow-auto rounded-2xl bg-white border border-slate-200 p-4 shadow-2xl animate-in zoom-in-95 duration-200">
           <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-100">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
-            <button onClick={() => onChange([])} className="text-[10px] text-emerald-600 font-bold hover:underline">Limpiar</button>
+            <span className="text-[10px] font-black text-brand-muted uppercase tracking-widest">{label}</span>
+            <button onClick={() => onChange([])} className="text-[10px] text-brand-primary font-bold hover:underline">Limpiar</button>
           </div>
           <div className="space-y-1">
             {options.length === 0 ? (
-              <p className="text-[10px] text-slate-400 italic py-2">Sin opciones</p>
+              <p className="text-[10px] text-brand-muted italic py-2">Sin opciones</p>
             ) : (
               options.map(opt => (
                 <label key={opt} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors group">
@@ -117,7 +117,7 @@ function MultiSelect({
                     type="checkbox" 
                     checked={value.includes(opt)} 
                     onChange={() => toggle(opt)}
-                    className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-50"
+                    className="w-4 h-4 rounded border-slate-300 text-brand-primary focus:ring-brand-primary/10"
                   />
                   <span className="text-xs text-slate-600 group-hover:text-slate-900 transition-colors truncate">{opt}</span>
                 </label>
@@ -224,7 +224,6 @@ export default function ComparativoInventarios({
             costoUnit: Number.isFinite(costoUnit) ? costoUnit : 0
           });
         } else {
-          // ✅ SUMA stock total del item en la semana
           prev.stock += Number.isFinite(stock) ? stock : 0;
           if (!prev.costoUnit && Number.isFinite(costoUnit) && costoUnit > 0) {
             prev.costoUnit = costoUnit;
@@ -291,18 +290,18 @@ export default function ComparativoInventarios({
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
         <div>
           <h2 className="text-2xl font-black text-slate-900 tracking-tight">Comparativo Semanal</h2>
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em]">Auditoría agregada por semana (Suma de Stock)</p>
+          <p className="text-brand-muted text-[10px] font-bold uppercase tracking-[0.2em]">Auditoría agregada por semana (Suma de Stock)</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-4 rounded-[2rem] border border-slate-100 shadow-sm">
+        <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm">
           <div className="flex items-center gap-3 pr-4 border-r border-slate-200">
             <div className="space-y-1">
-              <span className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Semana Origen</span>
+              <span className="text-[10px] font-black text-brand-muted uppercase ml-2 tracking-widest">Semana Origen</span>
               <div className="relative">
                 <select 
                   value={weekA} 
                   onChange={(e) => setWeekA(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-50 appearance-none min-w-[140px] pr-8"
+                  className="bg-brand-bg border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-brand-primary outline-none focus:ring-4 focus:ring-brand-primary/5 appearance-none min-w-[140px] pr-8"
                 >
                   <option value="">Seleccionar...</option>
                   {semanasUnicas.map(w => <option key={w} value={w}>{w}</option>)}
@@ -312,12 +311,12 @@ export default function ComparativoInventarios({
             </div>
             <ArrowRight className="text-slate-300 w-4 h-4 mt-4" />
             <div className="space-y-1">
-              <span className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Semana Destino</span>
+              <span className="text-[10px] font-black text-brand-muted uppercase ml-2 tracking-widest">Semana Destino</span>
               <div className="relative">
                 <select 
                   value={weekB} 
                   onChange={(e) => setWeekB(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-50 appearance-none min-w-[140px] pr-8"
+                  className="bg-brand-bg border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-brand-primary outline-none focus:ring-4 focus:ring-brand-primary/5 appearance-none min-w-[140px] pr-8"
                 >
                   <option value="">Seleccionar...</option>
                   {semanasUnicas.map(w => <option key={w} value={w}>{w}</option>)}
@@ -335,7 +334,7 @@ export default function ComparativoInventarios({
             {(selSede.length > 0 || selCentro.length > 0 || selEstado.length > 0) && (
               <button
                 onClick={() => { setSelSede([]); setSelCentro([]); setSelEstado([]); }}
-                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                className="p-2 text-brand-danger hover:bg-brand-danger/10 rounded-lg transition-colors"
                 title="Limpiar filtros"
               >
                 <X className="w-4 h-4" />
@@ -350,28 +349,28 @@ export default function ComparativoInventarios({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-[0.05] group-hover:opacity-10 transition-opacity">
-                 <ArrowRightLeft className="w-20 h-20 text-slate-900" />
+                 <ArrowRightLeft className="w-20 h-20 text-brand-primary" />
               </div>
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Items con Variación</p>
-              <p className="text-5xl font-black text-slate-900 tabular-nums tracking-tighter">{comparativo.items.length}</p>
+              <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Items con Variación</p>
+              <p className="text-5xl font-black text-brand-primary tabular-nums tracking-tighter">{comparativo.items.length}</p>
               <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Balance semana vs semana</p>
             </div>
 
             <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-[0.05] group-hover:opacity-10 transition-opacity">
-                 <TrendingDown className="w-20 h-20 text-red-600" />
+                 <TrendingDown className="w-20 h-20 text-brand-danger" />
               </div>
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Impacto Faltantes</p>
-              <p className="text-3xl font-black text-red-600 tabular-nums tracking-tight">{formatCOP(comparativo.totalFaltantes)}</p>
+              <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Impacto Faltantes</p>
+              <p className="text-3xl font-black text-brand-danger tabular-nums tracking-tight">{formatCOP(comparativo.totalFaltantes)}</p>
               <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Número de disminuciones de inventario</p>
             </div>
 
             <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-[0.05] group-hover:opacity-10 transition-opacity">
-                 <TrendingUp className="w-20 h-20 text-emerald-600" />
+                 <TrendingUp className="w-20 h-20 text-brand-success" />
               </div>
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Diferencia Neta</p>
-              <p className={`text-3xl font-black tabular-nums tracking-tight ${comparativo.totalImpacto < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+              <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Diferencia Neta</p>
+              <p className={`text-3xl font-black tabular-nums tracking-tight ${comparativo.totalImpacto < 0 ? 'text-brand-danger' : 'text-brand-success'}`}>
                 {comparativo.totalImpacto > 0 ? '+' : ''}{comparativo.totalImpacto.toLocaleString()}
               </p>
               <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Balance total de unidades</p>
@@ -381,7 +380,7 @@ export default function ComparativoInventarios({
           <div className="bg-white border border-slate-100 rounded-[3rem] overflow-hidden shadow-2xl">
             <div className="px-10 py-8 border-b border-slate-50 bg-slate-50/20">
               <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
-                <Table className="w-4 h-4 text-emerald-600" />
+                <Table className="w-4 h-4 text-brand-primary" />
                 Informe Detallado de Novedades Semanales
               </h3>
             </div>
@@ -389,27 +388,27 @@ export default function ComparativoInventarios({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/50">
-                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 whitespace-nowrap">Artículo</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 whitespace-nowrap">Subartículo</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Stock a Fecha</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Stock Inventariado</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Variación</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Estado</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 whitespace-nowrap">Artículo</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 whitespace-nowrap">Subartículo</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Stock a Fecha</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Stock Inventariado</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Variación</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {comparativo.items.slice(0, 300).map((r, i) => (
                     <tr key={i} className="hover:bg-slate-50 transition-colors group border-b border-slate-50">
                       <td className="px-10 py-4 text-xs font-bold text-slate-700">{r.articulo}</td>
-                      <td className="px-10 py-4 text-[11px] text-slate-400 uppercase font-bold">{r.sub}</td>
-                      <td className="px-10 py-4 text-xs text-center text-slate-500 tabular-nums">{r.stockA.toLocaleString()}</td>
+                      <td className="px-10 py-4 text-[11px] text-brand-muted uppercase font-bold">{r.sub}</td>
+                      <td className="px-10 py-4 text-xs text-center text-brand-muted tabular-nums">{r.stockA.toLocaleString()}</td>
                       <td className="px-10 py-4 text-xs text-center text-slate-800 font-bold tabular-nums">{r.stockB.toLocaleString()}</td>
-                      <td className={`px-10 py-4 text-xs text-center font-black tabular-nums ${r.diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      <td className={`px-10 py-4 text-xs text-center font-black tabular-nums ${r.diff < 0 ? 'text-brand-danger' : 'text-brand-success'}`}>
                         {r.diff > 0 ? '+' : ''}{r.diff.toLocaleString()}
                       </td>
                       <td className="px-10 py-4 text-center">
                         <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-lg border ${
-                          r.novedad === 'Faltante' ? 'bg-red-50 border-red-100 text-red-600' : 'bg-emerald-50 border-emerald-100 text-emerald-600'
+                          r.novedad === 'Faltante' ? 'bg-brand-danger/10 border-brand-danger/20 text-brand-danger' : 'bg-brand-success/10 border-brand-success/20 text-brand-success'
                         }`}>
                           {r.novedad}
                         </span>
@@ -418,15 +417,15 @@ export default function ComparativoInventarios({
                   ))}
                 </tbody>
               </table>
-              <div className="px-10 py-6 bg-slate-50 border-t border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest flex justify-between items-center">
+              <div className="px-10 py-6 bg-brand-bg border-t border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest flex justify-between items-center">
                 <span>Consolidando {rows.length.toLocaleString()} registros históricos</span>
-                <span className="flex items-center gap-2"><ArrowRightLeft className="w-3.5 h-3.5 text-emerald-600" /> Agregación Semanal Activa</span>
+                <span className="flex items-center gap-2"><ArrowRightLeft className="w-3.5 h-3.5 text-brand-primary" /> Agregación Semanal Activa</span>
               </div>
             </div>
           </div>
         </>
       ) : (
-        <div className="bg-slate-50 border border-dashed border-slate-200 rounded-[2.5rem] p-32 text-center">
+        <div className="bg-brand-bg border border-dashed border-slate-200 rounded-[2.5rem] p-32 text-center">
           <Calendar className="w-16 h-16 text-slate-200 mx-auto mb-6" />
           <h3 className="text-xl font-bold text-slate-400 mb-2">Sin semanas para comparar</h3>
           <p className="text-sm text-slate-300 max-w-sm mx-auto">Seleccione las semanas arriba para calcular variaciones agregadas de inventario.</p>
