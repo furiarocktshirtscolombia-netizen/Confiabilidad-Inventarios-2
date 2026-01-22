@@ -1,11 +1,10 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LocalDatabase, AnalysisResult } from './types';
 import { 
   parseUploadedFile, 
-  loadExcelFromPublic, 
   loadDbFromCache, 
-  clearLocalDb,
-  DB_FILE_NAME 
+  clearLocalDb
 } from './services/databaseService';
 import { analyzeData } from './services/geminiService';
 import ComparativoInventarios from './components/ComparativoInventarios';
@@ -59,7 +58,15 @@ const dateToExcelSerial = (d: Date) => {
 };
 
 // Columnas que se ocultan de la vista de tabla
-const HIDDEN = new Set([
+const HIDDEN_KEYWORDS = [
+  "COSTE LINEA",
+  "COSTE LANEA",
+  "COSTELANEA",
+  "COSTO LINEA",
+  "COSTO TOTAL",
+  "COSTO AJUSTE",
+  "COSTO UNITARIO",
+  "COSTO_UNITARIO",
   "SERIE",
   "CENTRO DE COSTOS",
   "CENTRO COSTOS",
@@ -68,23 +75,19 @@ const HIDDEN = new Set([
   "ESTABLECIMIENTO",
   "TIENDA",
   "FECHA",
-  "COSTE LINEA",
-  "COSTELANEA",
-  "COSTE LINEA",
-  "COSTO LINEA",
-  "COSTO TOTAL",
-  "COSTO AJUSTE",
-  "COSTO UNITARIO",
-  "COSTO_UNITARIO",
   "FAMILIA",
   "GRUPO",
   "MARCA",
   "SUB-FAMILIA"
-]);
+];
 
 const getVisibleHeaders = (headers: string[]) => {
-  const visible = headers.filter((h) => !HIDDEN.has(norm(h)));
-  // Priorizar Artículo y Subartículo al inicio
+  const visible = headers.filter((h) => {
+    const normalizedHeader = norm(h);
+    const shouldHide = HIDDEN_KEYWORDS.some(keyword => normalizedHeader.includes(keyword));
+    return !shouldHide;
+  });
+
   const priority = ["ARTICULO", "ARTÍCULO", "SUBARTICULO", "SUBARTÍCULO"];
   return visible.sort((a, b) => {
     const normA = norm(a);
@@ -194,7 +197,6 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' });
   
-  // Filter States
   const [selAlmacen, setSelAlmacen] = useState<string[]>([]);
   const [selFamilia, setSelFamilia] = useState<string[]>([]);
   const [selCentro, setSelCentro] = useState<string[]>([]);
@@ -205,18 +207,11 @@ const App: React.FC = () => {
   const globalFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const initDb = async () => {
+    const initDb = () => {
       setLoading(true);
       const cached = loadDbFromCache();
       if (cached) {
         setDb(cached);
-        setLoading(false);
-        return;
-      }
-      const fromPublic = await loadExcelFromPublic();
-      if (fromPublic) {
-        setDb(fromPublic);
-        setStatus({ type: 'success', message: '¡Base de datos pública detectada automáticamente!' });
       }
       setLoading(false);
     };
@@ -231,7 +226,7 @@ const App: React.FC = () => {
     try {
       const parsedDb = await parseUploadedFile(file);
       setDb(parsedDb);
-      setStatus({ type: 'success', message: `¡Base de datos "${file.name}" cargada!` });
+      setStatus({ type: 'success', message: `¡Archivo "${file.name}" cargado con éxito!` });
       if (globalFileInputRef.current) globalFileInputRef.current.value = '';
     } catch (err: any) {
       setStatus({ type: 'error', message: err.message || 'Error al procesar el Excel.' });
@@ -260,14 +255,11 @@ const App: React.FC = () => {
   };
 
   const handleClearDb = () => {
-    if (confirm("¿Estás seguro de eliminar la base de datos local?")) {
+    if (confirm("¿Deseas eliminar los datos cargados y volver a la pantalla de inicio?")) {
       clearLocalDb();
       setDb(null);
       setAnalysis(null);
       handleResetFilters();
-      loadExcelFromPublic().then(res => {
-        if (res) setDb(res);
-      });
     }
   };
 
@@ -280,23 +272,21 @@ const App: React.FC = () => {
     setSearchTerm("");
   };
 
-  // --- Column Identification ---
   const cols = useMemo(() => {
     if (!db) return {};
     return {
       almacen: findHeader(db.headers, ["ALMACEN", "ALMACÉN", "SEDE", "LOCAL", "TIENDA"]),
       familia: findHeader(db.headers, ["FAMILIA"]),
       articulo: findHeader(db.headers, ["ARTICULO", "ARTÍCULO"]),
-      subarticulo: findHeader(db.headers, ["SUBARTICULO", "SUBARTÍCULO"]),
+      subarticulo: findHeader(db.headers, ["SUBARTICULO", "SUBARTÍCULO", "UNIDAD"]),
       centro: findHeader(db.headers, ["CENTRO DE COSTOS", "CENTRO COSTOS", "CENTRO_DE_COSTOS"]),
       fecha: findHeader(db.headers, ["FECHA", "DATE"]),
-      costAdj: findHeader(db.headers, ["COSTO AJUSTE"]),
-      stock: findHeader(db.headers, ["STOCK A FECHA"]),
-      costLine: findHeader(db.headers, ["COSTELANEA", "COSTELÁNEA", "COSTO LINEA", "COSTO TOTAL"]) || findHeader(db.headers, ["COSTO AJUSTE"])
+      costAdj: findHeader(db.headers, ["COSTO AJUSTE", "DIFERENCIA COSTO", "VARIACION STOCK"]),
+      stock: findHeader(db.headers, ["STOCK A FECHA", "STOCK", "STOCK INVENTARIO"]),
+      costLine: findHeader(db.headers, ["COSTE LINEA", "COSTE LANEA", "COSTELANEA", "COSTO LINEA", "COSTO TOTAL"])
     };
   }, [db]);
 
-  // --- Filter Options ---
   const getOptions = (col: string | null | undefined) => {
     if (!db || !col) return [];
     const set = new Set<string>();
@@ -311,7 +301,6 @@ const App: React.FC = () => {
   const optFamilia = useMemo(() => getOptions(cols.familia), [db, cols.familia]);
   const optCentro = useMemo(() => getOptions(cols.centro), [db, cols.centro]);
 
-  // --- Combined Filtering Logic ---
   const filteredRows = useMemo(() => {
     if (!db) return [];
     const d1 = desde ? dateToExcelSerial(new Date(desde + "T00:00:00")) : null;
@@ -332,15 +321,26 @@ const App: React.FC = () => {
     });
   }, [db, cols, selAlmacen, selFamilia, selCentro, desde, hasta, searchTerm]);
 
-  // --- Dashboard Metrics ---
   const metrics = useMemo(() => {
     if (!db || filteredRows.length === 0) return { reliability: 0, negativeAdj: 0, totalAdj: 0 };
-    let negSum = 0; let totalSum = 0; let novedades = 0;
+    
+    const uniqueItemsSet = new Set<string>();
+    const noveltyItemsSet = new Set<string>();
+    let negSum = 0; 
+    let totalSum = 0;
     
     filteredRows.forEach(row => {
+      const art = String(row[cols.articulo || ""] ?? "").trim().toUpperCase();
+      const sub = String(row[cols.subarticulo || ""] ?? "").trim().toUpperCase();
+      const key = `${art}__${sub}`;
+      uniqueItemsSet.add(key);
+
       const adjVal = parseFloat(String(row[cols.costAdj || ""]).replace(/[^0-9.-]+/g, "")) || 0;
       totalSum += adjVal;
-      if (adjVal !== 0) novedades++;
+      
+      if (adjVal !== 0) {
+        noveltyItemsSet.add(key);
+      }
       
       if (cols.stock) {
         const stockVal = parseFloat(String(row[cols.stock]).replace(/[^0-9.-]+/g, "")) || 0;
@@ -351,16 +351,18 @@ const App: React.FC = () => {
       }
     });
 
-    // Lógica de confiabilidad (Razón directa Contadas / Novedad, max 100)
-    const totalContadas = filteredRows.length;
-    const totalNovedades = novedades;
+    const totalContadas = uniqueItemsSet.size;
+    const totalNovedades = noveltyItemsSet.size;
     
-    const reliabilityRaw = totalNovedades > 0 
-      ? (totalContadas / totalNovedades) * 100 
-      : 100;
+    let reliabilityRaw = 0;
+    if (totalContadas > 0) {
+      reliabilityRaw = (1 - (totalNovedades / totalContadas)) * 100;
+    } else {
+      reliabilityRaw = 100; 
+    }
       
     return { 
-      reliability: Math.min(reliabilityRaw, 100), 
+      reliability: Math.max(0, Math.min(100, reliabilityRaw)), 
       negativeAdj: negSum, 
       totalAdj: totalSum 
     };
@@ -368,52 +370,13 @@ const App: React.FC = () => {
 
   const visibleHeaders = useMemo(() => getVisibleHeaders(db ? db.headers : []), [db]);
 
-  // Determinar color de confiabilidad basado en el valor
   const getReliabilityColor = (val: number) => {
-    if (val >= 90) return 'text-brand-success';
-    if (val >= 70) return 'text-amber-500';
+    if (val >= 95) return 'text-brand-success';
+    if (val >= 90) return 'text-amber-500';
     return 'text-brand-danger';
   };
 
-  // --- Renderizado Condicional ---
-  
-  if (loading && !db) {
-    return (
-      <div className="min-h-screen bg-brand-bg flex flex-col items-center justify-center p-6 text-center">
-         <div className="relative mb-6">
-            <div className="w-20 h-20 border-b-2 border-brand-primary rounded-full animate-spin"></div>
-            <RefreshCw className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 text-brand-primary" />
-          </div>
-          <p className="text-brand-primary font-black tracking-widest animate-pulse text-[10px] uppercase">Sincronizando MaestroDB...</p>
-      </div>
-    );
-  }
-
-  // --- Contenido Principal ---
-  const mainContent = !db ? (
-    <div className="min-h-screen bg-brand-bg flex flex-col items-center justify-center p-6 text-center">
-      <div className="bg-white border border-slate-200 p-10 rounded-[2.5rem] max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-500">
-        <div className="bg-amber-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6">
-          <AlertCircle className="w-10 h-10 text-amber-600" />
-        </div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-2 tracking-tight">Sin base de datos</h1>
-        <p className="text-brand-muted text-sm mb-8 leading-relaxed">
-          No se detectó el archivo automático <span className="text-amber-600 font-mono">/{DB_FILE_NAME}</span>.
-          Sube un Excel para iniciar el análisis maestro.
-        </p>
-        <Button 
-          variant="primary" 
-          size="lg" 
-          className="w-full" 
-          leftIcon={<Upload size={18} />}
-          onClick={triggerUpload}
-        >
-          Subir Archivo Manual
-        </Button>
-        <p className="text-[10px] text-slate-400 mt-6 uppercase tracking-widest font-bold">LiquorHub Data Engine</p>
-      </div>
-    </div>
-  ) : (
+  const mainAppUI = db ? (
     <div className="min-h-screen bg-brand-bg text-slate-900 selection:bg-brand-primary/5 selection:text-brand-primary">
       <nav className="bg-white/90 backdrop-blur-xl border-b border-slate-100 px-6 py-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-3">
@@ -460,7 +423,7 @@ const App: React.FC = () => {
               <div>
                 <h2 className="text-2xl font-black text-slate-900 tracking-tight">Panel de Operaciones</h2>
                 <p className="text-brand-muted text-[10px] font-bold uppercase tracking-[0.2em]">
-                   Mostrando {filteredRows.length.toLocaleString()} referencias | {db.name}
+                   Mostrando {filteredRows.length.toLocaleString()} registros | {db.name}
                 </p>
               </div>
               <div className="flex items-center gap-3 bg-white px-4 py-2.5 rounded-2xl border border-slate-100 shadow-sm">
@@ -478,7 +441,7 @@ const App: React.FC = () => {
                 <p className={`text-5xl font-black tabular-nums tracking-tighter ${getReliabilityColor(metrics.reliability)}`}>
                   {metrics.reliability.toFixed(1)}%
                 </p>
-                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Razón directa Contadas vs Novedades</p>
+                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Precisión real (Items sin novedad / Total)</p>
               </div>
 
               <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group hover:border-brand-danger/30 transition-all">
@@ -487,7 +450,7 @@ const App: React.FC = () => {
                 </div>
                 <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Impacto Faltantes</p>
                 <p className="text-3xl font-black text-brand-danger tabular-nums tracking-tight">{formatCOP(metrics.negativeAdj)}</p>
-                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Costo total de stock negativo</p>
+                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Costo total de stock negativo detectado</p>
               </div>
 
               <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group hover:border-brand-primary/30 transition-all">
@@ -511,7 +474,7 @@ const App: React.FC = () => {
                     <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-brand-primary transition-colors" />
                     <input 
                       type="text" 
-                      placeholder="Buscar en columnas visibles..."
+                      placeholder="Buscar por artículo o unidad..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="w-full bg-white border border-slate-200 rounded-2xl py-4 pl-14 pr-8 text-sm focus:outline-none focus:ring-4 focus:ring-brand-primary/5 transition-all placeholder:text-slate-300"
@@ -523,36 +486,18 @@ const App: React.FC = () => {
                   <MultiSelect label="Almacén" options={optAlmacen} value={selAlmacen} onChange={setSelAlmacen} />
                   <MultiSelect label="Familia" options={optFamilia} value={selFamilia} onChange={setSelFamilia} />
                   <MultiSelect label="Centro de costo" options={optCentro} value={selCentro} onChange={setSelCentro} />
-                  
-                  <Button
-                    variant={desde || hasta ? "primary" : "secondary"}
-                    size="sm"
-                    onClick={() => setShowFecha(!showFecha)}
-                    leftIcon={<Calendar size={14} />}
-                    className="uppercase tracking-tight text-[10px]"
-                  >
-                    Fecha {(desde || hasta) ? '(Filtrado)' : ''}
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleResetFilters}
-                    leftIcon={<X size={14} />}
-                    className="ml-auto uppercase tracking-tight text-[10px]"
-                  >
-                    Limpiar Filtros
-                  </Button>
+                  <Button variant={desde || hasta ? "primary" : "secondary"} size="sm" onClick={() => setShowFecha(!showFecha)} leftIcon={<Calendar size={14} />} className="uppercase tracking-tight text-[10px]">Fecha</Button>
+                  <Button variant="ghost" size="sm" onClick={handleResetFilters} leftIcon={<X size={14} />} className="ml-auto uppercase tracking-tight text-[10px]">Limpiar</Button>
                 </div>
 
                 {showFecha && (
                   <div className="mt-8 p-8 bg-slate-50 rounded-[2rem] flex flex-wrap gap-10 animate-in slide-in-from-top-6 duration-400 border border-slate-100">
                     <div className="space-y-3">
-                      <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest block ml-1">Rango Desde</label>
+                      <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest block ml-1">Desde</label>
                       <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-5 py-3 text-xs text-slate-900 focus:outline-none focus:ring-4 focus:ring-brand-primary/5 transition-all" />
                     </div>
                     <div className="space-y-3">
-                      <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest block ml-1">Rango Hasta</label>
+                      <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest block ml-1">Hasta</label>
                       <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-5 py-3 text-xs text-slate-900 focus:outline-none focus:ring-4 focus:ring-brand-primary/5 transition-all" />
                     </div>
                   </div>
@@ -571,7 +516,7 @@ const App: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.slice(0, 50).map((row, i) => (
+                    {filteredRows.slice(0, 100).map((row, i) => (
                       <tr key={i} className="hover:bg-slate-50 transition-colors group">
                         {visibleHeaders.map((h) => (
                           <td key={h} className="px-10 py-5 text-[13px] text-brand-muted border-b border-slate-50 whitespace-nowrap group-hover:text-slate-900">
@@ -580,22 +525,8 @@ const App: React.FC = () => {
                         ))}
                       </tr>
                     ))}
-                    {filteredRows.length === 0 && (
-                      <tr>
-                        <td colSpan={visibleHeaders.length} className="px-10 py-32 text-center">
-                          <div className="flex flex-col items-center gap-6">
-                            <FilterIcon className="w-16 h-16 text-slate-100" />
-                            <p className="text-slate-400 italic text-sm font-medium">Búsqueda sin coincidencias en los criterios maestros.</p>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
-              </div>
-              <div className="px-10 py-6 bg-slate-50 border-t border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest flex justify-between items-center">
-                <span>Visualizando {Math.min(filteredRows.length, 50)} de {filteredRows.length.toLocaleString()} resultados</span>
-                <span className="flex items-center gap-2"><FilterIcon className="w-3.5 h-3.5 text-brand-primary" /> Auditoría Optimizada</span>
               </div>
             </div>
           </div>
@@ -609,52 +540,33 @@ const App: React.FC = () => {
           <div className="max-w-4xl mx-auto space-y-6 animate-in slide-in-from-bottom-6 duration-500">
             {!analysis ? (
               <div className="bg-white border border-slate-100 rounded-[2.8rem] p-24 text-center shadow-2xl relative overflow-hidden">
-                <div className="bg-indigo-50 w-28 h-28 rounded-full flex items-center justify-center mx-auto mb-10">
-                  <Zap className="w-14 h-14 text-brand-primary" />
-                </div>
-                <h2 className="text-4xl font-black text-slate-900 mb-6 tracking-tight">IA Predictiva Maestro</h2>
-                <p className="text-brand-muted mb-12 max-w-sm mx-auto leading-relaxed font-medium">Gemini Pro analizará {db.rows.length.toLocaleString()} referencias para detectar fugas críticas y patrones de stock.</p>
-                <Button 
-                  variant="primary" 
-                  size="lg" 
-                  className="mx-auto uppercase tracking-widest text-[11px]" 
-                  leftIcon={loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-                  onClick={handleAnalyze}
-                  disabled={loading}
-                >
-                  Generar Auditoría IA
-                </Button>
+                <Zap className="w-20 h-20 text-brand-primary mx-auto mb-10" />
+                <h2 className="text-4xl font-black text-slate-900 mb-6 tracking-tight">IA Analítica Maestro</h2>
+                <p className="text-brand-muted mb-12 max-w-sm mx-auto">Gemini Pro analizará {db.rows.length.toLocaleString()} referencias para detectar anomalías críticas.</p>
+                <Button variant="primary" size="lg" className="mx-auto" leftIcon={loading ? <RefreshCw className="animate-spin" /> : <Zap />} onClick={handleAnalyze} disabled={loading}>Generar Reporte IA</Button>
               </div>
             ) : (
-              <div className="space-y-8">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-black text-slate-900 flex items-center gap-4 uppercase tracking-widest text-[11px]"><Zap className="text-brand-primary w-6 h-6" /> Informe de Inteligencia</h2>
-                  <Button variant="ghost" size="sm" onClick={() => setAnalysis(null)} className="uppercase tracking-widest text-[10px]">Nuevo Análisis</Button>
-                </div>
-                <div className="bg-white border border-brand-primary/10 rounded-[3rem] p-16 shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-12 opacity-[0.05] pointer-events-none">
-                     <Zap className="w-64 h-64 text-brand-primary" />
-                  </div>
-                  <p className="text-2xl text-slate-700 leading-relaxed italic border-l-8 border-brand-primary pl-14 mb-16 font-medium font-serif">"{analysis.summary}"</p>
-                  <div className="grid lg:grid-cols-2 gap-16">
-                    <div className="bg-slate-50 p-12 rounded-[2.5rem] border border-slate-100">
-                      <h4 className="text-[10px] font-black text-brand-primary uppercase tracking-widest mb-10 flex items-center gap-3"><Search className="w-4 h-4"/> Hallazgos del Sistema</h4>
-                      <ul className="space-y-8">
-                        {analysis.insights.map((ins, i) => (
-                          <li key={i} className="text-[15px] text-brand-muted flex gap-6 leading-relaxed"><span className="text-brand-primary font-black bg-white w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border border-slate-100 shadow-sm">{i+1}</span> {ins}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="bg-brand-success/5 p-12 rounded-[2.5rem] border border-brand-success/10">
-                      <h4 className="text-[10px] font-black text-brand-success uppercase tracking-widest mb-10 flex items-center gap-3"><CheckCircle2 className="w-4 h-4"/> Plan de Acción</h4>
-                      <ul className="space-y-8">
-                        {analysis.suggestedActions.map((action, i) => (
-                          <li key={i} className="text-[15px] text-slate-700 flex gap-6 leading-relaxed"><CheckCircle2 className="w-7 h-7 text-brand-success shrink-0 mt-0.5" /> {action}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </div>
+              <div className="bg-white border border-brand-primary/10 rounded-[3rem] p-16 shadow-2xl">
+                 <h2 className="text-2xl font-black text-slate-900 mb-10 flex items-center gap-4"><Zap className="text-brand-primary" /> Resumen Estratégico</h2>
+                 <p className="text-xl text-slate-700 leading-relaxed italic border-l-8 border-brand-primary pl-8 mb-12 font-serif">"{analysis.summary}"</p>
+                 <div className="grid lg:grid-cols-2 gap-12">
+                   <div className="space-y-6">
+                      <h4 className="text-[10px] font-black text-brand-muted uppercase tracking-widest">Hallazgos Clave</h4>
+                      {analysis.insights.map((ins, i) => (
+                        <div key={i} className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-sm font-medium text-slate-600 flex gap-4">
+                          <span className="text-brand-primary font-black">0{i+1}</span> {ins}
+                        </div>
+                      ))}
+                   </div>
+                   <div className="space-y-6">
+                      <h4 className="text-[10px] font-black text-brand-muted uppercase tracking-widest">Plan de Acción</h4>
+                      {analysis.suggestedActions.map((action, i) => (
+                        <div key={i} className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 text-sm font-medium text-emerald-800 flex gap-4">
+                          <CheckCircle2 className="w-5 h-5 shrink-0" /> {action}
+                        </div>
+                      ))}
+                   </div>
+                 </div>
               </div>
             )}
           </div>
@@ -662,81 +574,68 @@ const App: React.FC = () => {
 
         {activeTab === 'settings' && (
           <div className="max-w-2xl mx-auto space-y-8 animate-in slide-in-from-bottom-6 duration-500">
-            <div className="bg-white border border-slate-100 rounded-[3rem] p-16 shadow-2xl relative overflow-hidden">
-              <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tighter">Motor de Gestión</h2>
-              <p className="text-brand-muted text-sm mb-14 font-medium leading-relaxed">Administración del entorno LiquorHub y sincronización de nodos de datos locales.</p>
-              <div className="space-y-10">
-                <div className="bg-slate-50 border border-slate-100 rounded-[2.5rem] p-12 flex items-center justify-between shadow-inner group">
-                  <div className="flex items-center gap-8">
-                    <div className="bg-white p-6 rounded-3xl border border-slate-100 group-hover:scale-110 transition-transform shadow-sm">
-                      <FileSpreadsheet className="w-11 h-11 text-brand-primary" />
-                    </div>
-                    <div>
-                      <p className="text-lg font-black text-slate-900 mb-2">{db.name}</p>
-                      <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Último Dump: {db.lastUpdated}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <Button variant="secondary" onClick={triggerUpload} title="Cargar Nuevo" leftIcon={<RefreshCw size={18} />} className="p-0 h-14 w-14" children="" />
-                    <Button variant="danger" onClick={handleClearDb} title="Eliminar" leftIcon={<Trash2 size={18} />} className="p-0 h-14 w-14" children="" />
-                  </div>
-                </div>
-                
-                <div className="p-12 bg-white border border-slate-100 rounded-[2.5rem] text-[10px] space-y-8 shadow-sm">
-                   <div className="flex justify-between items-center border-b border-slate-50 pb-6">
-                      <span className="text-brand-muted uppercase font-black tracking-widest">Origen de Transmisión</span>
-                      <span className="text-slate-600 font-mono bg-slate-50 px-5 py-2 rounded-xl border border-slate-100">{getSourceLabel(db.source)}</span>
-                    </div>
-                    <div className="flex justify-between items-center border-b border-slate-50 pb-6">
-                      <span className="text-brand-muted uppercase font-black tracking-widest">Ofuscación de Columnas</span>
-                      <span className="text-amber-600 font-black bg-amber-50 px-5 py-2 rounded-xl border border-amber-100">{db.headers.length - visibleHeaders.length} Campos Protegidos</span>
-                    </div>
-                    <div>
-                      <span className="text-brand-muted uppercase font-black tracking-widest block mb-6">Políticas de Ocultación Activas:</span>
-                      <div className="flex flex-wrap gap-3">
-                        {Array.from(HIDDEN).map(tag => (
-                          <span key={tag} className="bg-slate-50 text-slate-400 px-5 py-2.5 rounded-xl text-[9px] font-black border border-slate-100 uppercase tracking-[0.1em]">{tag}</span>
-                        ))}
-                      </div>
-                    </div>
-                </div>
-                <Button 
-                  variant="primary" 
-                  size="lg" 
-                  className="w-full uppercase tracking-[0.3em] text-[11px]" 
-                  leftIcon={<Upload size={18} />}
-                  onClick={triggerUpload}
-                >
-                  Actualizar Maestro Local
-                </Button>
+            <div className="bg-white border border-slate-100 rounded-[3rem] p-16 shadow-2xl text-center">
+              <HardDrive className="w-16 h-16 text-slate-300 mx-auto mb-8" />
+              <h2 className="text-2xl font-black text-slate-900 mb-4">{db.name}</h2>
+              <p className="text-brand-muted mb-12 uppercase tracking-widest text-[10px] font-black">Actualizado: {db.lastUpdated}</p>
+              <div className="flex gap-4 justify-center">
+                <Button variant="secondary" onClick={triggerUpload} leftIcon={<RefreshCw size={18} />}>Cambiar Archivo</Button>
+                <Button variant="danger" onClick={handleClearDb} leftIcon={<Trash2 size={18} />}>Borrar Caché</Button>
               </div>
             </div>
           </div>
         )}
       </main>
     </div>
+  ) : (
+    <div className="min-h-screen bg-brand-bg flex flex-col items-center justify-center p-6 text-center">
+      <div className="bg-white border border-slate-200 p-12 rounded-[3rem] max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-500">
+        <div className="bg-brand-primary/10 w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-8">
+          <Upload className="w-10 h-10 text-brand-primary" />
+        </div>
+        <h1 className="text-3xl font-black text-slate-900 mb-3 tracking-tighter">Bienvenido a MaestroDB</h1>
+        <p className="text-brand-muted text-sm mb-10 leading-relaxed font-medium">
+          Carga tu inventario para iniciar la auditoría de confiabilidad y análisis con IA.
+          No requerimos un archivo fijo; cualquier Excel con Artículo y Stock es compatible.
+        </p>
+        <Button 
+          variant="primary" 
+          size="lg" 
+          className="w-full h-16 text-lg shadow-xl shadow-brand-primary/20" 
+          leftIcon={<Upload size={22} />}
+          onClick={triggerUpload}
+        >
+          Seleccionar Excel o CSV
+        </Button>
+        <div className="mt-8 pt-8 border-t border-slate-100 flex items-center justify-center gap-6">
+           <div className="flex items-center gap-2 opacity-40">
+              <CheckCircle2 size={14} className="text-brand-success" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Seguro</span>
+           </div>
+           <div className="flex items-center gap-2 opacity-40">
+              <CheckCircle2 size={14} className="text-brand-success" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Local</span>
+           </div>
+           <div className="flex items-center gap-2 opacity-40">
+              <CheckCircle2 size={14} className="text-brand-success" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Preciso</span>
+           </div>
+        </div>
+      </div>
+      <p className="text-[10px] text-slate-400 mt-10 uppercase tracking-widest font-black flex items-center gap-2">
+        <DbIcon size={12} /> LiquorHub Data Engine
+      </p>
+    </div>
   );
 
   return (
     <>
-      {mainContent}
-      
-      {/* Global hidden file input for consistent uploads */}
-      <input 
-        ref={globalFileInputRef} 
-        type="file" 
-        onChange={handleFileUpload} 
-        className="hidden" 
-        accept=".xlsx, .xls, .csv" 
-      />
-
+      {mainAppUI}
+      <input ref={globalFileInputRef} type="file" onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls, .csv" />
       {loading && (
-        <div className="fixed inset-0 bg-white/95 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center">
-          <div className="relative mb-12">
-            <div className="w-32 h-32 border-b-4 border-brand-primary rounded-full animate-spin"></div>
-            <RefreshCw className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 text-brand-primary animate-pulse" />
-          </div>
-          <p className="text-brand-primary font-black tracking-[0.5em] animate-pulse text-[12px] uppercase">Procesando Inteligencia de Datos</p>
+        <div className="fixed inset-0 bg-white/90 backdrop-blur-xl z-[100] flex flex-col items-center justify-center">
+          <div className="w-16 h-16 border-4 border-brand-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-brand-primary font-black uppercase tracking-[0.3em] text-[10px]">Cargando Datos Maestro...</p>
         </div>
       )}
     </>

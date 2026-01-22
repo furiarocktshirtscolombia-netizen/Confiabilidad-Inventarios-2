@@ -2,7 +2,7 @@
 import * as XLSX from 'xlsx';
 import { LocalDatabase } from '../types';
 
-export const DB_FILE_NAME = 'BASE.xlsx';
+export const DB_FILE_NAME = 'Carga Manual';
 const STORAGE_KEY = 'MAESTRO_LOCAL_DB';
 const DB_SHEET_INDEX = 0;
 
@@ -40,21 +40,12 @@ export const parseUploadedFile = async (file: File): Promise<LocalDatabase> => {
 };
 
 /**
- * Intenta cargar BASE.xlsx desde la carpeta pública (Automático)
+ * Función simplificada que ya no busca archivos automáticos
+ * para evitar bloqueos por archivos inexistentes.
  */
 export const loadExcelFromPublic = async (): Promise<LocalDatabase | null> => {
-  try {
-    const response = await fetch(`/${DB_FILE_NAME}`, { cache: "no-store" });
-    if (!response.ok) return null;
-
-    const buffer = await response.arrayBuffer();
-    const db = processWorkbook(buffer, DB_FILE_NAME, 'public');
-    saveLocalDb(db);
-    return db;
-  } catch (err) {
-    console.warn("No se encontró el archivo base en /public.");
-    return null;
-  }
+  // Desactivado por requerimiento de usuario para priorizar flujo manual/profesional
+  return null;
 };
 
 export const saveLocalDb = (db: LocalDatabase) => {
@@ -64,8 +55,12 @@ export const saveLocalDb = (db: LocalDatabase) => {
 export const loadDbFromCache = (): LocalDatabase | null => {
   const data = localStorage.getItem(STORAGE_KEY);
   if (!data) return null;
-  const db = JSON.parse(data) as LocalDatabase;
-  return { ...db, source: 'cache' };
+  try {
+    const db = JSON.parse(data) as LocalDatabase;
+    return { ...db, source: 'cache' };
+  } catch (e) {
+    return null;
+  }
 };
 
 export const clearLocalDb = () => {
