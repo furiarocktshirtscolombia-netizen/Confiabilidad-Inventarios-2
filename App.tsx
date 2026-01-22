@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LocalDatabase, AnalysisResult } from './types';
 import { 
@@ -58,6 +57,7 @@ const dateToExcelSerial = (d: Date) => {
   return Math.floor(utc / 86400000) + 25569;
 };
 
+// Columnas que se ocultan de la vista de tabla
 const HIDDEN = new Set([
   "SERIE",
   "CENTRO DE COSTOS",
@@ -68,11 +68,16 @@ const HIDDEN = new Set([
   "TIENDA",
   "FECHA",
   "COSTE LINEA",
-  "COSTE LÍNEA",
   "COSTELANEA",
-  "COSTELÁNEA",
   "COSTO LINEA",
-  "COSTO TOTAL"
+  "COSTO TOTAL",
+  "COSTO AJUSTE",
+  "COSTO UNITARIO",
+  "COSTO_UNITARIO",
+  "FAMILIA",
+  "GRUPO",
+  "MARCA",
+  "SUB-FAMILIA"
 ]);
 
 const getVisibleHeaders = (headers: string[]) =>
@@ -183,7 +188,7 @@ const App: React.FC = () => {
   const [desde, setDesde] = useState<string>(""); 
   const [hasta, setHasta] = useState<string>(""); 
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const globalFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const initDb = async () => {
@@ -213,12 +218,16 @@ const App: React.FC = () => {
       const parsedDb = await parseUploadedFile(file);
       setDb(parsedDb);
       setStatus({ type: 'success', message: `¡Base de datos "${file.name}" cargada!` });
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (globalFileInputRef.current) globalFileInputRef.current.value = '';
     } catch (err: any) {
       setStatus({ type: 'error', message: err.message || 'Error al procesar el Excel.' });
     } finally {
       setLoading(false);
     }
+  };
+
+  const triggerUpload = () => {
+    globalFileInputRef.current?.click();
   };
 
   const handleAnalyze = async () => {
@@ -328,6 +337,10 @@ const App: React.FC = () => {
     return { reliability: (filteredRows.length - novedades) / filteredRows.length * 100, negativeAdj: negSum, totalAdj: totalSum };
   }, [filteredRows, cols]);
 
+  const visibleHeaders = getVisibleHeaders(db ? db.headers : []);
+
+  // --- Renderizado Condicional ---
+  
   if (loading && !db) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center">
@@ -340,32 +353,26 @@ const App: React.FC = () => {
     );
   }
 
-  if (!db) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
-        <div className="bg-white border border-slate-200 p-10 rounded-[2.5rem] max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-500">
-          <div className="bg-amber-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6">
-            <AlertCircle className="w-10 h-10 text-amber-600" />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2 tracking-tight">Sin base de datos</h1>
-          <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-            No se detectó el archivo automático <span className="text-amber-600 font-mono">/{DB_FILE_NAME}</span>.
-            Sube un Excel para iniciar el análisis maestro.
-          </p>
-          <input ref={fileInputRef} type="file" onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls, .csv" />
-          <button onClick={() => fileInputRef.current?.click()} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-lg shadow-emerald-600/20 active:scale-95">
-            <Upload className="w-5 h-5" />
-            Subir Archivo Manual
-          </button>
-          <p className="text-[10px] text-slate-400 mt-6 uppercase tracking-widest font-bold">LiquorHub Data Engine</p>
+  // --- Contenido Principal ---
+  const mainContent = !db ? (
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+      <div className="bg-white border border-slate-200 p-10 rounded-[2.5rem] max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-500">
+        <div className="bg-amber-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+          <AlertCircle className="w-10 h-10 text-amber-600" />
         </div>
+        <h1 className="text-2xl font-bold text-slate-900 mb-2 tracking-tight">Sin base de datos</h1>
+        <p className="text-slate-500 text-sm mb-8 leading-relaxed">
+          No se detectó el archivo automático <span className="text-amber-600 font-mono">/{DB_FILE_NAME}</span>.
+          Sube un Excel para iniciar el análisis maestro.
+        </p>
+        <button onClick={triggerUpload} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-lg shadow-emerald-600/20 active:scale-95">
+          <Upload className="w-5 h-5" />
+          Subir Archivo Manual
+        </button>
+        <p className="text-[10px] text-slate-400 mt-6 uppercase tracking-widest font-bold">LiquorHub Data Engine</p>
       </div>
-    );
-  }
-
-  const visibleHeaders = getVisibleHeaders(db.headers);
-
-  return (
+    </div>
+  ) : (
     <div className="min-h-screen bg-white text-slate-900 selection:bg-emerald-50 selection:text-emerald-900">
       <nav className="bg-white/90 backdrop-blur-xl border-b border-slate-100 px-6 py-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-3">
@@ -453,7 +460,7 @@ const App: React.FC = () => {
                     <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-emerald-500 transition-colors" />
                     <input 
                       type="text" 
-                      placeholder="Artículo, código, marca o categoría..."
+                      placeholder="Buscar en columnas visibles..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="w-full bg-white border border-slate-200 rounded-2xl py-4 pl-14 pr-8 text-sm focus:outline-none focus:ring-4 focus:ring-emerald-50 transition-all placeholder:text-slate-300"
@@ -537,7 +544,7 @@ const App: React.FC = () => {
               </div>
               <div className="px-10 py-6 bg-slate-50 border-t border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest flex justify-between items-center">
                 <span>Visualizando {Math.min(filteredRows.length, 50)} de {filteredRows.length.toLocaleString()} resultados</span>
-                <span className="flex items-center gap-2"><FilterIcon className="w-3.5 h-3.5 text-emerald-600" /> Motor de filtrado LiquorHub v2.0</span>
+                <span className="flex items-center gap-2"><FilterIcon className="w-3.5 h-3.5 text-emerald-600" /> Auditoría Optimizada</span>
               </div>
             </div>
           </div>
@@ -596,7 +603,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'settings' && db && (
+        {activeTab === 'settings' && (
           <div className="max-w-2xl mx-auto space-y-8 animate-in slide-in-from-bottom-6 duration-500">
             <div className="bg-white border border-slate-100 rounded-[3rem] p-16 shadow-2xl relative overflow-hidden">
               <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tighter">Motor de Gestión</h2>
@@ -613,7 +620,7 @@ const App: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex gap-4">
-                    <button onClick={() => fileInputRef.current?.click()} className="p-5 bg-white border border-slate-200 hover:bg-slate-50 rounded-2xl text-slate-400 hover:text-emerald-600 transition-all shadow-sm" title="Cargar Nuevo"><RefreshCw className="w-6 h-6" /></button>
+                    <button onClick={triggerUpload} className="p-5 bg-white border border-slate-200 hover:bg-slate-50 rounded-2xl text-slate-400 hover:text-emerald-600 transition-all shadow-sm" title="Cargar Nuevo"><RefreshCw className="w-6 h-6" /></button>
                     <button onClick={handleClearDb} className="p-5 bg-red-50 border border-red-100 hover:bg-red-100 rounded-2xl text-red-600 transition-all shadow-sm" title="Eliminar"><Trash2 className="w-6 h-6" /></button>
                   </div>
                 </div>
@@ -636,16 +643,30 @@ const App: React.FC = () => {
                       </div>
                     </div>
                 </div>
-                <button onClick={() => fileInputRef.current?.click()} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-7 rounded-[2.5rem] flex items-center justify-center gap-4 transition-all active:scale-[0.98] shadow-2xl shadow-emerald-200 uppercase tracking-[0.3em] text-[11px]">
+                <button onClick={triggerUpload} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-7 rounded-[2.5rem] flex items-center justify-center gap-4 transition-all active:scale-[0.98] shadow-2xl shadow-emerald-200 uppercase tracking-[0.3em] text-[11px]">
                   <Upload className="w-6 h-6" />
                   Actualizar Maestro Local
                 </button>
               </div>
             </div>
-            <input ref={fileInputRef} type="file" onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls, .csv" />
           </div>
         )}
       </main>
+    </div>
+  );
+
+  return (
+    <>
+      {mainContent}
+      
+      {/* Global hidden file input for consistent uploads */}
+      <input 
+        ref={globalFileInputRef} 
+        type="file" 
+        onChange={handleFileUpload} 
+        className="hidden" 
+        accept=".xlsx, .xls, .csv" 
+      />
 
       {loading && (
         <div className="fixed inset-0 bg-white/95 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center">
@@ -656,7 +677,7 @@ const App: React.FC = () => {
           <p className="text-emerald-600 font-black tracking-[0.5em] animate-pulse text-[12px] uppercase">Procesando Inteligencia de Datos</p>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

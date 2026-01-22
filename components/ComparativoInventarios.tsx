@@ -8,12 +8,12 @@ import {
   Info,
   Calendar,
   ChevronDown,
-  X,
-  Filter as FilterIcon
+  X
 } from "lucide-react";
 
 type Row = Record<string, any>;
 
+// --- Helpers de Normalización y Fechas ---
 const norm = (s: string) =>
   (s || "")
     .normalize("NFD")
@@ -34,19 +34,30 @@ const findHeader = (headers: string[], candidates: string[]) => {
 const formatCOP = (val: number) => 
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val);
 
-const excelSerialToDate = (serial: number) => {
+function excelSerialToDate(serial: number) {
+  // Excel base: 1899-12-30
   const utcDays = Math.floor(serial - 25569);
   const utcValue = utcDays * 86400; 
   return new Date(utcValue * 1000);
-};
+}
 
-const formatDateFromSerial = (serial: number) => {
+function getISOWeek(d: Date) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return { year: date.getUTCFullYear(), week: weekNo };
+}
+
+function weekKeyFromSerial(serial: number) {
   if (!serial || isNaN(serial)) return "N/A";
   const d = excelSerialToDate(serial);
-  return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
-};
+  const { year, week } = getISOWeek(d);
+  return `${year}-W${String(week).padStart(2, "0")}`;
+}
 
-// --- Sub-componente MultiSelect Estilizado (Tema Claro) ---
+// --- Sub-componente MultiSelect Estilizado ---
 function MultiSelect({
   label,
   options,
@@ -133,30 +144,30 @@ export default function ComparativoInventarios({
   const colStock = useMemo(() => findHeader(headers, ["STOCK A FECHA", "STOCK_FECHA", "STOCK"]), [headers]);
   const colCostoUnit = useMemo(() => findHeader(headers, ["COSTELANEA", "COSTELÁNEA", "COSTO UNITARIO", "COSTO"]), [headers]);
   
-  // Nuevas columnas para filtros
   const colSede = useMemo(() => findHeader(headers, ["SEDE", "ALMACEN", "ALMACÉN", "LOCAL", "TIENDA"]), [headers]);
   const colCentro = useMemo(() => findHeader(headers, ["CENTRO DE COSTOS", "CENTRO COSTOS", "CENTRO_DE_COSTOS"]), [headers]);
   const colEstado = useMemo(() => findHeader(headers, ["ESTADO", "TIPO", "CLASIFICACION", "CLASIFICACIÓN"]), [headers]);
 
-  const fechasUnicas = useMemo(() => {
+  // Agrupar por semanas disponibles
+  const semanasUnicas = useMemo(() => {
     if (!colFecha) return [];
-    const set = new Set<number>();
+    const set = new Set<string>();
     for (const r of rows) {
       const v = Number(r[colFecha]);
-      if (Number.isFinite(v)) set.add(v);
+      if (Number.isFinite(v)) {
+        set.add(weekKeyFromSerial(v));
+      }
     }
-    return Array.from(set).sort((a, b) => a - b);
+    return Array.from(set).sort();
   }, [rows, colFecha]);
 
-  const [fechaA, setFechaA] = useState<number | "">("");
-  const [fechaB, setFechaB] = useState<number | "">("");
+  const [weekA, setWeekA] = useState<string>("");
+  const [weekB, setWeekB] = useState<string>("");
   
-  // Estados para filtros multi-opción
   const [selSede, setSelSede] = useState<string[]>([]);
   const [selCentro, setSelCentro] = useState<string[]>([]);
   const [selEstado, setSelEstado] = useState<string[]>([]);
 
-  // Opciones únicas para los selectores
   const getUniqueOpts = (col: string | null) => {
     if (!col) return [];
     const set = new Set<string>();
@@ -171,88 +182,97 @@ export default function ComparativoInventarios({
   const optCentro = useMemo(() => getUniqueOpts(colCentro), [colCentro, rows]);
   const optEstado = useMemo(() => getUniqueOpts(colEstado), [colEstado, rows]);
 
-  // Fechas por defecto
   useEffect(() => {
-    if (fechasUnicas.length >= 2 && (fechaA === "" || fechaB === "")) {
-      setFechaA(fechasUnicas[fechasUnicas.length - 2]);
-      setFechaB(fechasUnicas[fechasUnicas.length - 1]);
+    if (semanasUnicas.length >= 2 && (weekA === "" || weekB === "")) {
+      setWeekA(semanasUnicas[semanasUnicas.length - 2]);
+      setWeekB(semanasUnicas[semanasUnicas.length - 1]);
     }
-  }, [fechasUnicas, fechaA, fechaB]);
+  }, [semanasUnicas, weekA, weekB]);
 
   const keyOf = (r: Row) => {
-    const art = colArticulo ? String(r[colArticulo] ?? "").trim() : "";
-    const sub = colSub ? String(r[colSub] ?? "").trim() : "";
+    const art = colArticulo ? norm(String(r[colArticulo] ?? "")) : "";
+    const sub = colSub ? norm(String(r[colSub] ?? "")) : "";
     return `${art}__${sub}`;
   };
 
   const comparativo = useMemo(() => {
-    if (fechaA === "" || fechaB === "" || !colStock) return null;
+    if (!weekA || !weekB || !colStock) return null;
 
-    const snapshot = (targetFecha: number) => {
-      const map = new Map<string, Row>();
+    const getSnapshotByWeek = (targetWeek: string) => {
+      const map = new Map<string, { stock: number; articulo: string; unidad: string; costoUnit: number }>();
+      
       rows.forEach(r => {
-        if (Number(r[colFecha!]) !== targetFecha) return;
+        const serial = Number(r[colFecha!]);
+        if (!Number.isFinite(serial)) return;
+        if (weekKeyFromSerial(serial) !== targetWeek) return;
 
-        // Filtro SEDE
-        if (colSede && selSede.length) {
-          if (!selSede.includes(String(r[colSede] ?? "").trim())) return;
-        }
-        // Filtro CENTRO
-        if (colCentro && selCentro.length) {
-          if (!selCentro.includes(String(r[colCentro] ?? "").trim())) return;
-        }
-        // Filtro ESTADO (si existe en columna)
-        if (colEstado && selEstado.length) {
-          if (!selEstado.includes(String(r[colEstado] ?? "").trim())) return;
-        }
+        // Filtros Multi-opción
+        if (colSede && selSede.length && !selSede.includes(String(r[colSede] ?? "").trim())) return;
+        if (colCentro && selCentro.length && !selCentro.includes(String(r[colCentro] ?? "").trim())) return;
+        if (colEstado && selEstado.length && !selEstado.includes(String(r[colEstado] ?? "").trim())) return;
 
-        map.set(keyOf(r), r);
+        const k = keyOf(r);
+        const stock = Number(r[colStock!] ?? 0);
+        const costoUnit = colCostoUnit ? Number(r[colCostoUnit!] ?? 0) : 0;
+        
+        const prev = map.get(k);
+        if (!prev) {
+          map.set(k, {
+            stock: Number.isFinite(stock) ? stock : 0,
+            articulo: String(r[colArticulo!] ?? "").trim(),
+            unidad: String(r[colSub!] ?? "").trim(),
+            costoUnit: Number.isFinite(costoUnit) ? costoUnit : 0
+          });
+        } else {
+          // ✅ SUMA stock total del item en la semana
+          prev.stock += Number.isFinite(stock) ? stock : 0;
+          if (!prev.costoUnit && Number.isFinite(costoUnit) && costoUnit > 0) {
+            prev.costoUnit = costoUnit;
+          }
+        }
       });
       return map;
     };
 
-    const mapA = snapshot(fechaA);
-    const mapB = snapshot(fechaB);
+    const mapA = getSnapshotByWeek(weekA);
+    const mapB = getSnapshotByWeek(weekB);
 
     const allKeys = new Set<string>([...mapA.keys(), ...mapB.keys()]);
     const items: any[] = [];
     let totalImpacto = 0;
     let totalFaltantes = 0;
-    let totalSobrantes = 0;
 
     for (const k of allKeys) {
       const a = mapA.get(k);
       const b = mapB.get(k);
 
-      const stockA = Number(a?.[colStock] ?? 0);
-      const stockB = Number(b?.[colStock] ?? 0);
+      const stockA = a?.stock ?? 0;
+      const stockB = b?.stock ?? 0;
       const diff = stockB - stockA;
 
       if (diff === 0) continue;
 
-      const costoUnit = colCostoUnit ? Number((b ?? a)?.[colCostoUnit] ?? 0) : 0;
+      const costoUnit = b?.costoUnit ?? a?.costoUnit ?? 0;
       const impacto = diff * costoUnit;
 
       totalImpacto += impacto;
       if (diff < 0) totalFaltantes += Math.abs(impacto);
-      if (diff > 0) totalSobrantes += impacto;
 
       items.push({
-        articulo: (b ?? a)?.[colArticulo!] ?? "N/A",
-        sub: (b ?? a)?.[colSub!] ?? "N/A",
+        articulo: (b ?? a)?.articulo ?? "N/A",
+        sub: (b ?? a)?.unidad ?? "N/A",
         stockA,
         stockB,
         diff,
-        novedad: diff < 0 ? "FALTANTE" : "SOBRANTE",
+        novedad: diff < 0 ? "Faltante" : "Sobrante",
         impacto
       });
     }
 
-    // Ordenar por mayor impacto absoluto
     items.sort((x, y) => Math.abs(y.impacto) - Math.abs(x.impacto));
 
-    return { items, totalImpacto, totalFaltantes, totalSobrantes };
-  }, [fechaA, fechaB, rows, colFecha, colStock, colArticulo, colSub, colCostoUnit, colSede, colCentro, colEstado, selSede, selCentro, selEstado]);
+    return { items, totalImpacto, totalFaltantes };
+  }, [weekA, weekB, rows, colFecha, colStock, colArticulo, colSub, colCostoUnit, colSede, colCentro, colEstado, selSede, selCentro, selEstado]);
 
   if (!colFecha || !colArticulo || !colSub || !colStock) {
     return (
@@ -270,43 +290,43 @@ export default function ComparativoInventarios({
     <div className="space-y-8 animate-in fade-in slide-in-from-right-10 duration-500">
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Comparativo Estratégico</h2>
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em]">Auditoría por llave única (Artículo + Unidad)</p>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Comparativo Semanal</h2>
+          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em]">Auditoría agregada por semana (Suma de Stock)</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-4 rounded-[2rem] border border-slate-100 shadow-sm">
-          {/* Selectores de Fecha */}
           <div className="flex items-center gap-3 pr-4 border-r border-slate-200">
             <div className="space-y-1">
-              <span className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">A</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Semana Origen</span>
               <div className="relative">
                 <select 
-                  value={fechaA} 
-                  onChange={(e) => setFechaA(Number(e.target.value))}
-                  className="bg-white border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-50 appearance-none min-w-[120px] pr-8"
+                  value={weekA} 
+                  onChange={(e) => setWeekA(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-50 appearance-none min-w-[140px] pr-8"
                 >
-                  {fechasUnicas.map(f => <option key={f} value={f}>{formatDateFromSerial(f)}</option>)}
+                  <option value="">Seleccionar...</option>
+                  {semanasUnicas.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
             </div>
             <ArrowRight className="text-slate-300 w-4 h-4 mt-4" />
             <div className="space-y-1">
-              <span className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">B</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Semana Destino</span>
               <div className="relative">
                 <select 
-                  value={fechaB} 
-                  onChange={(e) => setFechaB(Number(e.target.value))}
-                  className="bg-white border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-50 appearance-none min-w-[120px] pr-8"
+                  value={weekB} 
+                  onChange={(e) => setWeekB(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-50 appearance-none min-w-[140px] pr-8"
                 >
-                  {fechasUnicas.map(f => <option key={f} value={f}>{formatDateFromSerial(f)}</option>)}
+                  <option value="">Seleccionar...</option>
+                  {semanasUnicas.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
             </div>
           </div>
 
-          {/* Filtros Multi-opción */}
           <div className="flex flex-wrap items-center gap-2">
             <MultiSelect label="Sede" options={optSede} value={selSede} onChange={setSelSede} />
             <MultiSelect label="Centro" options={optCentro} value={selCentro} onChange={setSelCentro} />
@@ -332,29 +352,29 @@ export default function ComparativoInventarios({
               <div className="absolute top-0 right-0 p-4 opacity-[0.05] group-hover:opacity-10 transition-opacity">
                  <ArrowRightLeft className="w-20 h-20 text-slate-900" />
               </div>
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Items con Novedad</p>
+              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Items con Variación</p>
               <p className="text-5xl font-black text-slate-900 tabular-nums tracking-tighter">{comparativo.items.length}</p>
-              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Variaciones físicas detectadas</p>
+              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Balance semana vs semana</p>
             </div>
 
             <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-[0.05] group-hover:opacity-10 transition-opacity">
                  <TrendingDown className="w-20 h-20 text-red-600" />
               </div>
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Costo Faltantes</p>
+              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Impacto Faltantes</p>
               <p className="text-3xl font-black text-red-600 tabular-nums tracking-tight">{formatCOP(comparativo.totalFaltantes)}</p>
-              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Impacto económico negativo</p>
+              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Número de disminuciones de inventario</p>
             </div>
 
             <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-[0.05] group-hover:opacity-10 transition-opacity">
                  <TrendingUp className="w-20 h-20 text-emerald-600" />
               </div>
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Costo Neto</p>
+              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Diferencia Neta</p>
               <p className={`text-3xl font-black tabular-nums tracking-tight ${comparativo.totalImpacto < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                {formatCOP(comparativo.totalImpacto)}
+                {comparativo.totalImpacto > 0 ? '+' : ''}{comparativo.totalImpacto.toLocaleString()}
               </p>
-              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Balance total (B - A)</p>
+              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Balance total de unidades</p>
             </div>
           </div>
 
@@ -362,7 +382,7 @@ export default function ComparativoInventarios({
             <div className="px-10 py-8 border-b border-slate-50 bg-slate-50/20">
               <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
                 <Table className="w-4 h-4 text-emerald-600" />
-                Auditoría de Variaciones
+                Informe Detallado de Novedades Semanales
               </h3>
             </div>
             <div className="overflow-x-auto">
@@ -370,33 +390,37 @@ export default function ComparativoInventarios({
                 <thead>
                   <tr className="bg-slate-50/50">
                     <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 whitespace-nowrap">Artículo</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 whitespace-nowrap">Unidad</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Stock A</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Stock B</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Diferencia</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Impacto ($)</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 whitespace-nowrap">Subartículo</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Stock a Fecha</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Stock Inventariado</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Variación</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {comparativo.items.slice(0, 200).map((r, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors group">
+                  {comparativo.items.slice(0, 300).map((r, i) => (
+                    <tr key={i} className="hover:bg-slate-50 transition-colors group border-b border-slate-50">
                       <td className="px-10 py-4 text-xs font-bold text-slate-700">{r.articulo}</td>
                       <td className="px-10 py-4 text-[11px] text-slate-400 uppercase font-bold">{r.sub}</td>
-                      <td className="px-10 py-4 text-xs text-center text-slate-500">{r.stockA}</td>
-                      <td className="px-10 py-4 text-xs text-center text-slate-800 font-bold">{r.stockB}</td>
-                      <td className={`px-10 py-4 text-xs text-center font-black ${r.diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {r.diff > 0 ? '+' : ''}{r.diff}
+                      <td className="px-10 py-4 text-xs text-center text-slate-500 tabular-nums">{r.stockA.toLocaleString()}</td>
+                      <td className="px-10 py-4 text-xs text-center text-slate-800 font-bold tabular-nums">{r.stockB.toLocaleString()}</td>
+                      <td className={`px-10 py-4 text-xs text-center font-black tabular-nums ${r.diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {r.diff > 0 ? '+' : ''}{r.diff.toLocaleString()}
                       </td>
-                      <td className={`px-10 py-4 text-xs text-right font-black tabular-nums ${r.impacto < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {formatCOP(r.impacto)}
+                      <td className="px-10 py-4 text-center">
+                        <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-lg border ${
+                          r.novedad === 'Faltante' ? 'bg-red-50 border-red-100 text-red-600' : 'bg-emerald-50 border-emerald-100 text-emerald-600'
+                        }`}>
+                          {r.novedad}
+                        </span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <div className="px-10 py-6 bg-slate-50 border-t border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest flex justify-between items-center">
-                <span>Mostrando {Math.min(comparativo.items.length, 200)} novedades auditadas</span>
-                <span className="flex items-center gap-2"><ArrowRightLeft className="w-3.5 h-3.5 text-emerald-600" /> Auditoría por Referencia Única</span>
+                <span>Consolidando {rows.length.toLocaleString()} registros históricos</span>
+                <span className="flex items-center gap-2"><ArrowRightLeft className="w-3.5 h-3.5 text-emerald-600" /> Agregación Semanal Activa</span>
               </div>
             </div>
           </div>
@@ -404,8 +428,8 @@ export default function ComparativoInventarios({
       ) : (
         <div className="bg-slate-50 border border-dashed border-slate-200 rounded-[2.5rem] p-32 text-center">
           <Calendar className="w-16 h-16 text-slate-200 mx-auto mb-6" />
-          <h3 className="text-xl font-bold text-slate-400 mb-2">Sin fechas de comparación</h3>
-          <p className="text-sm text-slate-300 max-w-sm mx-auto">Seleccione dos fechas arriba para calcular automáticamente las variaciones de inventario y su impacto contable.</p>
+          <h3 className="text-xl font-bold text-slate-400 mb-2">Sin semanas para comparar</h3>
+          <p className="text-sm text-slate-300 max-w-sm mx-auto">Seleccione las semanas arriba para calcular variaciones agregadas de inventario.</p>
         </div>
       )}
     </div>
