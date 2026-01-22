@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
+import Button from "./Button";
 import { 
   ArrowRightLeft, 
   ArrowRight, 
@@ -89,17 +90,15 @@ function MultiSelect({
 
   return (
     <div className="relative" ref={containerRef}>
-      <button
+      <Button
+        variant={value.length > 0 ? "primary" : "secondary"}
+        size="sm"
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-[11px] font-black uppercase tracking-tight transition-all ${
-          value.length > 0 
-            ? 'bg-brand-primary border-brand-primary text-white shadow-lg shadow-brand-primary/20' 
-            : 'bg-white border-slate-200 text-brand-muted hover:border-slate-400'
-        }`}
+        rightIcon={<ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />}
+        className="uppercase tracking-tight text-[10px]"
       >
         {label}{value.length ? ` (${value.length})` : ""}
-        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
+      </Button>
 
       {open && (
         <div className="absolute z-[60] mt-2 w-64 max-h-72 overflow-auto rounded-2xl bg-white border border-slate-200 p-4 shadow-2xl animate-in zoom-in-95 duration-200">
@@ -332,13 +331,14 @@ export default function ComparativoInventarios({
             <MultiSelect label="Estado" options={optEstado} value={selEstado} onChange={setSelEstado} />
             
             {(selSede.length > 0 || selCentro.length > 0 || selEstado.length > 0) && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => { setSelSede([]); setSelCentro([]); setSelEstado([]); }}
-                className="p-2 text-brand-danger hover:bg-brand-danger/10 rounded-lg transition-colors"
-                title="Limpiar filtros"
-              >
-                <X className="w-4 h-4" />
-              </button>
+                leftIcon={<X size={14} />}
+                className="text-brand-danger hover:bg-brand-danger/10 uppercase tracking-tight text-[10px]"
+                children="Limpiar"
+              />
             )}
           </div>
         </div>

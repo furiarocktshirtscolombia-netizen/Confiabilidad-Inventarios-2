@@ -9,6 +9,7 @@ import {
 } from './services/databaseService';
 import { analyzeData } from './services/geminiService';
 import ComparativoInventarios from './components/ComparativoInventarios';
+import Button from './components/Button';
 import { 
   Database as DbIcon, 
   LayoutDashboard, 
@@ -88,10 +89,10 @@ const formatCOP = (val: number) =>
 
 const getSourceIcon = (source: LocalDatabase['source']) => {
   switch (source) {
-    case 'public': return <Cloud className="w-4 h-4 text-brand-success" />;
-    case 'upload': return <Upload className="w-4 h-4 text-amber-600" />;
-    case 'cache': return <HardDrive className="w-4 h-4 text-sky-600" />;
-    default: return <DbIcon className="w-4 h-4 text-slate-400" />;
+    case 'public': return <Cloud size={16} className="text-brand-success" />;
+    case 'upload': return <Upload size={16} className="text-amber-600" />;
+    case 'cache': return <HardDrive size={16} className="text-sky-600" />;
+    default: return <DbIcon size={16} className="text-slate-400" />;
   }
 };
 
@@ -131,17 +132,15 @@ const MultiSelect: React.FC<{
 
   return (
     <div className="relative" ref={containerRef}>
-      <button
+      <Button
+        variant={value.length > 0 ? "primary" : "secondary"}
+        size="sm"
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-[11px] font-black uppercase tracking-tight transition-all ${
-          value.length > 0 
-            ? 'bg-brand-primary border-brand-primary text-white shadow-lg shadow-brand-primary/20' 
-            : 'bg-white border-slate-200 text-brand-muted hover:border-slate-400'
-        }`}
+        rightIcon={<ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />}
+        className="uppercase tracking-tight text-[10px]"
       >
         {label}{value.length ? ` (${value.length})` : ""}
-        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
+      </Button>
 
       {open && (
         <div className="absolute z-[60] mt-2 w-64 max-h-72 overflow-auto rounded-2xl bg-white border border-slate-200 p-4 shadow-2xl animate-in zoom-in-95 duration-200">
@@ -387,10 +386,15 @@ const App: React.FC = () => {
           No se detectó el archivo automático <span className="text-amber-600 font-mono">/{DB_FILE_NAME}</span>.
           Sube un Excel para iniciar el análisis maestro.
         </p>
-        <button onClick={triggerUpload} className="w-full bg-brand-primary hover:bg-[#0a355c] text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-lg shadow-brand-primary/20 active:scale-95">
-          <Upload className="w-5 h-5" />
+        <Button 
+          variant="primary" 
+          size="lg" 
+          className="w-full" 
+          leftIcon={<Upload size={18} />}
+          onClick={triggerUpload}
+        >
           Subir Archivo Manual
-        </button>
+        </Button>
         <p className="text-[10px] text-slate-400 mt-6 uppercase tracking-widest font-bold">LiquorHub Data Engine</p>
       </div>
     </div>
@@ -505,25 +509,25 @@ const App: React.FC = () => {
                   <MultiSelect label="Familia" options={optFamilia} value={selFamilia} onChange={setSelFamilia} />
                   <MultiSelect label="Centro de costo" options={optCentro} value={selCentro} onChange={setSelCentro} />
                   
-                  <button
+                  <Button
+                    variant={desde || hasta ? "primary" : "secondary"}
+                    size="sm"
                     onClick={() => setShowFecha(!showFecha)}
-                    className={`flex items-center gap-2 px-5 py-3 rounded-xl border text-[11px] font-black uppercase tracking-tight transition-all ${
-                      desde || hasta 
-                        ? 'bg-brand-primary border-brand-primary text-white shadow-lg shadow-brand-primary/20' 
-                        : 'bg-white border-slate-200 text-brand-muted hover:text-slate-900 hover:border-slate-400'
-                    }`}
+                    leftIcon={<Calendar size={14} />}
+                    className="uppercase tracking-tight text-[10px]"
                   >
-                    <Calendar className="w-4 h-4" />
                     Fecha {(desde || hasta) ? '(Filtrado)' : ''}
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={handleResetFilters}
-                    className="flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-brand-danger hover:border-brand-danger/20 transition-all text-[11px] font-black uppercase tracking-tight ml-auto"
+                    leftIcon={<X size={14} />}
+                    className="ml-auto uppercase tracking-tight text-[10px]"
                   >
-                    <X className="w-4 h-4" />
                     Limpiar Filtros
-                  </button>
+                  </Button>
                 </div>
 
                 {showFecha && (
@@ -595,16 +599,22 @@ const App: React.FC = () => {
                 </div>
                 <h2 className="text-4xl font-black text-slate-900 mb-6 tracking-tight">IA Predictiva Maestro</h2>
                 <p className="text-brand-muted mb-12 max-w-sm mx-auto leading-relaxed font-medium">Gemini Pro analizará {db.rows.length.toLocaleString()} referencias para detectar fugas críticas y patrones de stock.</p>
-                <button onClick={handleAnalyze} disabled={loading} className="bg-brand-primary hover:bg-[#0a355c] text-white font-black py-6 px-16 rounded-[2.5rem] flex items-center gap-4 mx-auto shadow-2xl shadow-brand-primary/20 active:scale-95 transition-all uppercase text-[11px] tracking-[0.2em]">
-                  {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                <Button 
+                  variant="primary" 
+                  size="lg" 
+                  className="mx-auto uppercase tracking-widest text-[11px]" 
+                  leftIcon={loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                  onClick={handleAnalyze}
+                  disabled={loading}
+                >
                   Generar Auditoría IA
-                </button>
+                </Button>
               </div>
             ) : (
               <div className="space-y-8">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-black text-slate-900 flex items-center gap-4 uppercase tracking-widest text-[11px]"><Zap className="text-brand-primary w-6 h-6" /> Informe de Inteligencia</h2>
-                  <button onClick={() => setAnalysis(null)} className="text-[10px] font-black text-slate-400 hover:text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-2 transition-colors">Nuevo Análisis</button>
+                  <Button variant="ghost" size="sm" onClick={() => setAnalysis(null)} className="uppercase tracking-widest text-[10px]">Nuevo Análisis</Button>
                 </div>
                 <div className="bg-white border border-brand-primary/10 rounded-[3rem] p-16 shadow-2xl relative overflow-hidden">
                   <div className="absolute top-0 right-0 p-12 opacity-[0.05] pointer-events-none">
@@ -652,8 +662,8 @@ const App: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex gap-4">
-                    <button onClick={triggerUpload} className="p-5 bg-white border border-slate-200 hover:bg-slate-50 rounded-2xl text-brand-muted hover:text-brand-primary transition-all shadow-sm" title="Cargar Nuevo"><RefreshCw className="w-6 h-6" /></button>
-                    <button onClick={handleClearDb} className="p-5 bg-brand-danger/5 border border-brand-danger/10 hover:bg-brand-danger/20 rounded-2xl text-brand-danger transition-all shadow-sm" title="Eliminar"><Trash2 className="w-6 h-6" /></button>
+                    <Button variant="secondary" onClick={triggerUpload} title="Cargar Nuevo" leftIcon={<RefreshCw size={18} />} className="p-0 h-14 w-14" children="" />
+                    <Button variant="danger" onClick={handleClearDb} title="Eliminar" leftIcon={<Trash2 size={18} />} className="p-0 h-14 w-14" children="" />
                   </div>
                 </div>
                 
@@ -675,10 +685,15 @@ const App: React.FC = () => {
                       </div>
                     </div>
                 </div>
-                <button onClick={triggerUpload} className="w-full bg-brand-primary hover:bg-[#0a355c] text-white font-black py-7 rounded-[2.5rem] flex items-center justify-center gap-4 transition-all active:scale-[0.98] shadow-2xl shadow-brand-primary/20 uppercase tracking-[0.3em] text-[11px]">
-                  <Upload className="w-6 h-6" />
+                <Button 
+                  variant="primary" 
+                  size="lg" 
+                  className="w-full uppercase tracking-[0.3em] text-[11px]" 
+                  leftIcon={<Upload size={18} />}
+                  onClick={triggerUpload}
+                >
                   Actualizar Maestro Local
-                </button>
+                </Button>
               </div>
             </div>
           </div>
