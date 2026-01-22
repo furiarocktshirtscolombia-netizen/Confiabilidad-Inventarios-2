@@ -322,10 +322,12 @@ const App: React.FC = () => {
   const metrics = useMemo(() => {
     if (!db || filteredRows.length === 0) return { reliability: 0, negativeAdj: 0, totalAdj: 0 };
     let negSum = 0; let totalSum = 0; let novedades = 0;
+    
     filteredRows.forEach(row => {
       const adjVal = parseFloat(String(row[cols.costAdj || ""]).replace(/[^0-9.-]+/g, "")) || 0;
       totalSum += adjVal;
       if (adjVal !== 0) novedades++;
+      
       if (cols.stock) {
         const stockVal = parseFloat(String(row[cols.stock]).replace(/[^0-9.-]+/g, "")) || 0;
         if (stockVal < 0) {
@@ -334,10 +336,31 @@ const App: React.FC = () => {
         }
       }
     });
-    return { reliability: (filteredRows.length - novedades) / filteredRows.length * 100, negativeAdj: negSum, totalAdj: totalSum };
+
+    // ✅ NUEVA LÓGICA DE CONFIABILIDAD (Razón directa Contadas / Novedad, max 100)
+    const totalContadas = filteredRows.length;
+    const totalNovedades = novedades;
+    
+    // Si no hay novedades, la confiabilidad es 100%
+    const reliabilityRaw = totalNovedades > 0 
+      ? (totalContadas / totalNovedades) * 100 
+      : 100;
+      
+    return { 
+      reliability: Math.min(reliabilityRaw, 100), 
+      negativeAdj: negSum, 
+      totalAdj: totalSum 
+    };
   }, [filteredRows, cols]);
 
   const visibleHeaders = getVisibleHeaders(db ? db.headers : []);
+
+  // Determinar color de confiabilidad basado en el valor
+  const getReliabilityColor = (val: number) => {
+    if (val >= 90) return 'text-emerald-600';
+    if (val >= 70) return 'text-amber-500';
+    return 'text-red-600';
+  };
 
   // --- Renderizado Condicional ---
   
@@ -426,8 +449,10 @@ const App: React.FC = () => {
                    <Percent className="w-24 h-24 text-emerald-600" />
                 </div>
                 <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Confiabilidad Local</p>
-                <p className="text-5xl font-black text-emerald-600 tabular-nums tracking-tighter">{metrics.reliability.toFixed(1)}%</p>
-                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Precisión basada en ajustes actuales</p>
+                <p className={`text-5xl font-black tabular-nums tracking-tighter ${getReliabilityColor(metrics.reliability)}`}>
+                  {metrics.reliability.toFixed(1)}%
+                </p>
+                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Razón directa Contadas vs Novedades</p>
               </div>
 
               <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group hover:border-red-200 transition-all">
