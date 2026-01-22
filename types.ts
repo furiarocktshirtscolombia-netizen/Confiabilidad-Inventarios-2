@@ -5,6 +5,7 @@ export interface LocalDatabase {
   rows: any[];
   lastUpdated: string;
   fileSize: number;
+  source: 'public' | 'upload' | 'cache';
 }
 
 export interface AnalysisResult {
