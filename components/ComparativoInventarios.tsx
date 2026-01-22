@@ -391,9 +391,9 @@ export default function ComparativoInventarios({
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 whitespace-nowrap">Artículo</th>
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 whitespace-nowrap">Subartículo</th>
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Stock a Fecha</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Stock Inventariado</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Stock Inventario</th>
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Variación</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Estado</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-right">Cobro</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -406,12 +406,8 @@ export default function ComparativoInventarios({
                       <td className={`px-10 py-4 text-xs text-center font-black tabular-nums ${r.diff < 0 ? 'text-brand-danger' : 'text-brand-success'}`}>
                         {r.diff > 0 ? '+' : ''}{r.diff.toLocaleString()}
                       </td>
-                      <td className="px-10 py-4 text-center">
-                        <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-lg border ${
-                          r.novedad === 'Faltante' ? 'bg-brand-danger/10 border-brand-danger/20 text-brand-danger' : 'bg-brand-success/10 border-brand-success/20 text-brand-success'
-                        }`}>
-                          {r.novedad}
-                        </span>
+                      <td className={`px-10 py-4 text-xs text-right font-black tabular-nums ${r.impacto < 0 ? 'text-brand-danger' : 'text-brand-success'}`}>
+                        {formatCOP(r.impacto)}
                       </td>
                     </tr>
                   ))}

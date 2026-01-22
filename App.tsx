@@ -70,6 +70,7 @@ const HIDDEN = new Set([
   "FECHA",
   "COSTE LINEA",
   "COSTELANEA",
+  "COSTE LINEA",
   "COSTO LINEA",
   "COSTO TOTAL",
   "COSTO AJUSTE",
@@ -81,8 +82,22 @@ const HIDDEN = new Set([
   "SUB-FAMILIA"
 ]);
 
-const getVisibleHeaders = (headers: string[]) =>
-  headers.filter((h) => !HIDDEN.has(norm(h)));
+const getVisibleHeaders = (headers: string[]) => {
+  const visible = headers.filter((h) => !HIDDEN.has(norm(h)));
+  // Priorizar Artículo y Subartículo al inicio
+  const priority = ["ARTICULO", "ARTÍCULO", "SUBARTICULO", "SUBARTÍCULO"];
+  return visible.sort((a, b) => {
+    const normA = norm(a);
+    const normB = norm(b);
+    const idxA = priority.indexOf(normA);
+    const idxB = priority.indexOf(normB);
+    
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return 0;
+  });
+};
 
 const formatCOP = (val: number) => 
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val);
@@ -351,7 +366,7 @@ const App: React.FC = () => {
     };
   }, [filteredRows, cols]);
 
-  const visibleHeaders = getVisibleHeaders(db ? db.headers : []);
+  const visibleHeaders = useMemo(() => getVisibleHeaders(db ? db.headers : []), [db]);
 
   // Determinar color de confiabilidad basado en el valor
   const getReliabilityColor = (val: number) => {
