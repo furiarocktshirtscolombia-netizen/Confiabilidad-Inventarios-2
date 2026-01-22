@@ -1,0 +1,8 @@
+{
+  "name": "Prompt Maestro Database Bridge",
+  "description": "A sophisticated React application that bridges Gemini AI intelligence with GitHub for persistent data storage using Excel/CSV files, enabling automated versioning and data analytics.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
