@@ -13,7 +13,8 @@ import {
   ShieldAlert,
   ArrowUpRight,
   BarChart3,
-  Percent
+  Percent,
+  Filter
 } from "lucide-react";
 import {
   BarChart,
@@ -68,11 +69,13 @@ function MultiSelect({
   options,
   value,
   onChange,
+  icon
 }: {
   label: string;
   options: string[];
   value: string[];
   onChange: (v: string[]) => void;
+  icon?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -98,6 +101,7 @@ function MultiSelect({
         variant={value.length > 0 ? "primary" : "secondary"}
         size="sm"
         onClick={() => setOpen(!open)}
+        leftIcon={icon}
         rightIcon={<ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />}
         className="uppercase tracking-tight text-[10px]"
       >
@@ -163,6 +167,7 @@ export default function ComparativoInventarios({
   const [dateB, setDateB] = useState<number | "">("");
   const [selSede, setSelSede] = useState<string[]>([]);
   const [selCentro, setSelCentro] = useState<string[]>([]);
+  const [selStatus, setSelStatus] = useState<string[]>([]);
 
   useEffect(() => {
     if (fechasUnicas.length >= 2 && (dateA === "" || dateB === "")) {
@@ -219,8 +224,6 @@ export default function ComparativoInventarios({
       return map;
     };
 
-    // Tomamos los datos de la fecha B (normalmente la carga de inventario actual)
-    // Pero permitimos compararlo contra el sistema de la fecha A
     const mapBaseA = getConsolidatedSnapshot(dateA as number);
     const mapBaseB = getConsolidatedSnapshot(dateB as number);
 
@@ -239,8 +242,6 @@ export default function ComparativoInventarios({
       const a = mapBaseA.get(k);
       const b = mapBaseB.get(k);
 
-      // Stock Sistema: STOCK A FECHA del Periodo A
-      // Conteo Físico: STOCK INVENTARIO del Periodo B (o del mismo periodo si es auditoría única)
       const sisVal = a?.sis ?? 0;
       const conVal = b?.con ?? 0;
       const diff = conVal - sisVal;
@@ -250,10 +251,8 @@ export default function ComparativoInventarios({
       const sede = (b ?? a)?.sede || "N/A";
       const centro = (b ?? a)?.centro || "N/A";
 
-      // LÓGICA OFICIAL: Confiabilidad Ítem = STOCK INVENTARIO / STOCK A FECHA
       let itemReliability: number | null = null;
       if (sisVal !== 0) {
-        // Capping a 100% (1.00) para no inflar el promedio con sobrantes
         const precision = (conVal / sisVal) * 100;
         itemReliability = precision;
         const cappedPrecision = Math.min(100, precision);
@@ -273,13 +272,15 @@ export default function ComparativoInventarios({
       if (impactoReal < 0) totalImpactoNegativo += Math.abs(impactoReal);
       if (impactoReal > 0) totalImpactoPositivo += impactoReal;
 
+      const novedad = diff === 0 ? "SIN NOVEDAD" : (diff < 0 ? "FALTANTE" : "SOBRANTE");
+
       items.push({
         articulo: (b ?? a)?.art ?? "Desconocido",
         unidad: (b ?? a)?.unit ?? "N/A",
         sisVal,
         conVal,
         diff,
-        novedad: diff === 0 ? "SIN NOVEDAD" : (diff < 0 ? "FALTANTE" : "SOBRANTE"),
+        novedad,
         reliability: itemReliability,
         costUnit: cost,
         impacto: impactoReal,
@@ -300,10 +301,15 @@ export default function ComparativoInventarios({
       reliability: data.sum / data.count
     })).sort((x,y) => x.reliability - y.reliability);
 
-    items.sort((x, y) => Math.abs(y.impacto) - Math.abs(x.impacto));
+    // Filtrado de la lista por estado (view filter)
+    const filteredItems = selStatus.length 
+      ? items.filter(i => selStatus.includes(i.novedad))
+      : items;
+
+    filteredItems.sort((x, y) => Math.abs(y.impacto) - Math.abs(x.impacto));
 
     return { 
-      items, 
+      items: filteredItems, 
       reliability, 
       totalImpactoNegativo, 
       totalImpactoPositivo, 
@@ -312,7 +318,7 @@ export default function ComparativoInventarios({
       sedeChartData,
       centroChartData
     };
-  }, [dateA, dateB, rows, colFecha, colStockSistema, colConteoFisico, colArticulo, colSub, colCostoUnit, colSede, colCentro, selSede, selCentro]);
+  }, [dateA, dateB, rows, colFecha, colStockSistema, colConteoFisico, colArticulo, colSub, colCostoUnit, colSede, colCentro, selSede, selCentro, selStatus]);
 
   if (!colFecha || !colStockSistema || !colConteoFisico) {
     return (
@@ -361,6 +367,7 @@ export default function ComparativoInventarios({
           <div className="flex flex-wrap items-center gap-2">
             <MultiSelect label="Sede" options={getUniqueOpts(rows, colSede)} value={selSede} onChange={setSelSede} />
             <MultiSelect label="Centro" options={getUniqueOpts(rows, colCentro)} value={selCentro} onChange={setSelCentro} />
+            <MultiSelect label="Estado" options={["SIN NOVEDAD", "FALTANTE", "SOBRANTE"]} value={selStatus} onChange={setSelStatus} icon={<Filter size={14} />} />
           </div>
         </div>
       </header>
@@ -459,6 +466,11 @@ export default function ComparativoInventarios({
                 <Table className="w-4 h-4 text-brand-primary" />
                 Matriz de Auditoría (Precisión por Referencia)
               </h3>
+              {selStatus.length > 0 && (
+                <span className="text-[10px] font-bold text-brand-primary uppercase bg-brand-primary/10 px-3 py-1 rounded-full">
+                  Filtrado por: {selStatus.join(", ")}
+                </span>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -475,31 +487,37 @@ export default function ComparativoInventarios({
                   </tr>
                 </thead>
                 <tbody>
-                  {comparativo.items.slice(0, 300).map((r, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors group border-b border-slate-50">
-                      <td className="px-10 py-4 text-center">
-                        <div className={`w-3 h-3 rounded-full mx-auto ${
-                          r.reliability === null ? 'bg-slate-200' :
-                          getReliabilityStatus(Math.min(100, r.reliability)).color === '#2E7D32' ? 'bg-brand-success' :
-                          getReliabilityStatus(Math.min(100, r.reliability)).color === '#f59e0b' ? 'bg-amber-500' :
-                          'bg-brand-danger shadow-[0_0_8px_rgba(198,40,40,0.4)]'
-                        }`} />
-                      </td>
-                      <td className="px-10 py-4 text-xs font-bold text-slate-700">{r.articulo}</td>
-                      <td className="px-10 py-4 text-[11px] text-brand-muted uppercase font-bold">{r.unidad}</td>
-                      <td className="px-10 py-4 text-xs text-center text-brand-muted tabular-nums">{r.sisVal.toLocaleString()}</td>
-                      <td className="px-10 py-4 text-xs text-center text-slate-800 font-bold tabular-nums">{r.conVal.toLocaleString()}</td>
-                      <td className={`px-10 py-4 text-xs text-center font-black tabular-nums ${r.diff < 0 ? 'text-brand-danger' : r.diff > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
-                        {r.diff > 0 ? '+' : ''}{r.diff.toLocaleString()}
-                      </td>
-                      <td className={`px-10 py-4 text-xs text-right font-black tabular-nums ${r.reliability !== null ? (Math.min(100, r.reliability) >= 85 ? 'text-brand-success' : 'text-slate-900') : 'text-slate-300'}`}>
-                        {r.reliability !== null ? `${r.reliability.toFixed(1)}%` : 'Excluido'}
-                      </td>
-                      <td className={`px-10 py-4 text-xs text-right font-black tabular-nums ${r.impacto < 0 ? 'text-brand-danger' : r.impacto > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
-                        {formatCOP(Math.abs(r.impacto))}
-                      </td>
+                  {comparativo.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-10 py-20 text-center text-slate-400 italic">No hay registros para los filtros seleccionados.</td>
                     </tr>
-                  ))}
+                  ) : (
+                    comparativo.items.slice(0, 300).map((r, i) => (
+                      <tr key={i} className="hover:bg-slate-50 transition-colors group border-b border-slate-50">
+                        <td className="px-10 py-4 text-center">
+                          <div className={`w-3 h-3 rounded-full mx-auto ${
+                            r.reliability === null ? 'bg-slate-200' :
+                            getReliabilityStatus(Math.min(100, r.reliability)).color === '#2E7D32' ? 'bg-brand-success' :
+                            getReliabilityStatus(Math.min(100, r.reliability)).color === '#f59e0b' ? 'bg-amber-500' :
+                            'bg-brand-danger shadow-[0_0_8px_rgba(198,40,40,0.4)]'
+                          }`} />
+                        </td>
+                        <td className="px-10 py-4 text-xs font-bold text-slate-700">{r.articulo}</td>
+                        <td className="px-10 py-4 text-[11px] text-brand-muted uppercase font-bold">{r.unidad}</td>
+                        <td className="px-10 py-4 text-xs text-center text-brand-muted tabular-nums">{r.sisVal.toLocaleString()}</td>
+                        <td className="px-10 py-4 text-xs text-center text-slate-800 font-bold tabular-nums">{r.conVal.toLocaleString()}</td>
+                        <td className={`px-10 py-4 text-xs text-center font-black tabular-nums ${r.diff < 0 ? 'text-brand-danger' : r.diff > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
+                          {r.diff > 0 ? '+' : ''}{r.diff.toLocaleString()}
+                        </td>
+                        <td className={`px-10 py-4 text-xs text-right font-black tabular-nums ${r.reliability !== null ? (Math.min(100, r.reliability) >= 85 ? 'text-brand-success' : 'text-slate-900') : 'text-slate-300'}`}>
+                          {r.reliability !== null ? `${r.reliability.toFixed(1)}%` : 'Excluido'}
+                        </td>
+                        <td className={`px-10 py-4 text-xs text-right font-black tabular-nums ${r.impacto < 0 ? 'text-brand-danger' : r.impacto > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
+                          {formatCOP(Math.abs(r.impacto))}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
               <div className="px-10 py-6 bg-brand-bg border-t border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest flex justify-between items-center">
