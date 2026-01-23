@@ -95,7 +95,7 @@ const getVisibleHeaders = (headers: string[]) => {
     return 0;
   });
 
-  return ["RIESGO", ...sorted, "COSTO DE AJUSTE"];
+  return ["RIESGO", ...sorted];
 };
 
 const formatCOP = (val: number) => 
@@ -382,13 +382,6 @@ const App: React.FC = () => {
                                   <span className={`px-3 py-1 rounded-full text-[10px] font-black border tracking-widest ${risk.color}`}>
                                     {risk.label}
                                   </span>
-                                </td>
-                              );
-                            }
-                            if (h === "COSTO DE AJUSTE") {
-                              return (
-                                <td key={h} className={`px-10 py-5 text-[13px] font-bold border-b border-slate-50 whitespace-nowrap ${row.impacto < 0 ? 'text-brand-danger' : row.impacto > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
-                                  {formatCOP(row.impacto)}
                                 </td>
                               );
                             }
