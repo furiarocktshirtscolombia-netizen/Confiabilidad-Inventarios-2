@@ -27,7 +27,8 @@ import {
   Calendar,
   ChevronDown,
   X,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Filter
 } from 'lucide-react';
 
 const norm = (s: string) =>
@@ -115,7 +116,8 @@ const MultiSelect: React.FC<{
   options: string[];
   value: string[];
   onChange: (v: string[]) => void;
-}> = ({ label, options, value, onChange }) => {
+  icon?: React.ReactNode;
+}> = ({ label, options, value, onChange, icon }) => {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -140,6 +142,7 @@ const MultiSelect: React.FC<{
         variant={value.length > 0 ? "primary" : "secondary"}
         size="sm"
         onClick={() => setOpen(!open)}
+        leftIcon={icon}
         rightIcon={<ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />}
         className="uppercase tracking-tight text-[10px]"
       >
@@ -186,6 +189,7 @@ const App: React.FC = () => {
   const [selAlmacen, setSelAlmacen] = useState<string[]>([]);
   const [selFamilia, setSelFamilia] = useState<string[]>([]);
   const [selCentro, setSelCentro] = useState<string[]>([]);
+  const [selStatus, setSelStatus] = useState<string[]>([]);
   const [showFecha, setShowFecha] = useState(false);
   const [desde, setDesde] = useState<string>(""); 
   const [hasta, setHasta] = useState<string>(""); 
@@ -253,6 +257,7 @@ const App: React.FC = () => {
     setSelAlmacen([]);
     setSelFamilia([]);
     setSelCentro([]);
+    setSelStatus([]);
     setDesde("");
     setHasta("");
     setSearchTerm("");
@@ -298,6 +303,16 @@ const App: React.FC = () => {
       if (cols.almacen && selAlmacen.length && !selAlmacen.includes(String(r[cols.almacen]).trim())) return false;
       if (cols.familia && selFamilia.length && !selFamilia.includes(String(r[cols.familia]).trim())) return false;
       if (cols.centro && selCentro.length && !selCentro.includes(String(r[cols.centro]).trim())) return false;
+      
+      // Filtro de Estado (Novedad)
+      if (selStatus.length) {
+        const sis = parseFloat(String(r[cols.stockSistema || ""]).replace(/[^0-9.-]+/g, "")) || 0;
+        const con = parseFloat(String(r[cols.stockConteo || ""]).replace(/[^0-9.-]+/g, "")) || 0;
+        const diff = con - sis;
+        const novedad = diff === 0 ? "SIN NOVEDAD" : (diff < 0 ? "FALTANTE" : "SOBRANTE");
+        if (!selStatus.includes(novedad)) return false;
+      }
+
       if (cols.fecha && (d1 !== null || d2 !== null)) {
         const rawDate = Number(r[cols.fecha]);
         if (!Number.isFinite(rawDate)) return false;
@@ -306,7 +321,7 @@ const App: React.FC = () => {
       }
       return true;
     });
-  }, [db, cols, selAlmacen, selFamilia, selCentro, desde, hasta, searchTerm]);
+  }, [db, cols, selAlmacen, selFamilia, selCentro, selStatus, desde, hasta, searchTerm]);
 
   const metrics = useMemo(() => {
     if (!db || filteredRows.length === 0) return { reliability: 0, negativeAdj: 0, totalAdj: 0 };
@@ -316,7 +331,6 @@ const App: React.FC = () => {
     let negSum = 0; 
     let totalSum = 0;
     
-    // DEFINICIÓN FINAL: Promedio de Precisión por Ítem (Min 1, Conteo / Sistema)
     filteredRows.forEach(row => {
       const sis = parseFloat(String(row[cols.stockSistema || ""]).replace(/[^0-9.-]+/g, "")) || 0;
       const con = parseFloat(String(row[cols.stockConteo || ""]).replace(/[^0-9.-]+/g, "")) || 0;
@@ -325,7 +339,6 @@ const App: React.FC = () => {
       totalSum += adjVal;
       
       if (sis !== 0) {
-        // Confiabilidad por fila: Min(1, Físico / Sistema)
         const precision = (con / sis) * 100;
         sumReliability += Math.min(100, precision);
         validItems++;
@@ -443,6 +456,7 @@ const App: React.FC = () => {
                   <MultiSelect label="Almacén" options={optAlmacen} value={selAlmacen} onChange={setSelAlmacen} />
                   <MultiSelect label="Familia" options={optFamilia} value={selFamilia} onChange={setSelFamilia} />
                   <MultiSelect label="Centro de costo" options={optCentro} value={selCentro} onChange={setSelCentro} />
+                  <MultiSelect label="Estado" options={["SIN NOVEDAD", "FALTANTE", "SOBRANTE"]} value={selStatus} onChange={setSelStatus} icon={<Filter size={14} />} />
                   <Button variant={desde || hasta ? "primary" : "secondary"} size="sm" onClick={() => setShowFecha(!showFecha)} leftIcon={<Calendar size={14} />} className="uppercase tracking-tight text-[10px]">Fecha</Button>
                   <Button variant="ghost" size="sm" onClick={handleResetFilters} leftIcon={<X size={14} />} className="ml-auto uppercase tracking-tight text-[10px]">Limpiar</Button>
                 </div>
