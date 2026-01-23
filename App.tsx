@@ -31,26 +31,54 @@ import {
   Filter
 } from 'lucide-react';
 
-const norm = (s: string) =>
-  (s || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toUpperCase();
+// --- UTILIDADES ROBUSTAS DE AUDITORÍA ---
 
-const findHeader = (headers: string[], candidates: string[]) => {
-  const normalizedMap = new Map(headers.map(h => [norm(h), h]));
-  for (const c of candidates) {
-    const real = normalizedMap.get(norm(c));
-    if (real) return real;
+const normKey = (s: string) =>
+  (s || "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // quita tildes
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, ""); // quita espacios/guiones/caracteres raros
+
+const getByAliases = (row: Record<string, any>, aliases: string[]) => {
+  const keys = Object.keys(row);
+  for (const alias of aliases) {
+    if (alias in row) return row[alias];
+    const target = normKey(alias);
+    for (const k of keys) {
+      if (normKey(k) === target) return row[k];
+    }
   }
-  return null;
+  return undefined;
 };
 
-const dateToExcelSerial = (d: Date) => {
-  const utc = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
-  return Math.floor(utc / 86400000) + 25569;
+const toNumber = (val: any): number => {
+  if (typeof val === "number") return Number.isFinite(val) ? val : 0;
+  if (val === null || val === undefined) return 0;
+
+  let s = String(val).trim();
+  if (!s || s === "-") return 0;
+
+  // Manejo de separadores decimales/miles (español vs inglés)
+  if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
+  else if (s.includes(",") && !s.includes(".")) s = s.replace(",", ".");
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+};
+
+// Fórmula Simétrica de Auditoría: Penaliza tanto faltante como sobrante
+const calculateItemReliability = (stockFecha: number, stockInv: number) => {
+  const a = Math.abs(stockFecha);
+  const b = Math.abs(stockInv);
+
+  if (a === 0 && b === 0) return 1.0;
+  if (a === 0 || b === 0) return 0.0;
+
+  const ratio = b / a;
+  const score = ratio <= 1 ? ratio : 1 / ratio; // Simetría: si falta baja, si sobra también baja
+  return Math.max(0, Math.min(1, score));
 };
 
 const HIDDEN_KEYWORDS = [
@@ -73,17 +101,17 @@ const HIDDEN_KEYWORDS = [
 
 const getVisibleHeaders = (headers: string[]) => {
   const visible = headers.filter((h) => {
-    const normalizedHeader = norm(h);
-    const shouldHide = HIDDEN_KEYWORDS.some(keyword => normalizedHeader.includes(keyword));
+    const normalizedHeader = normKey(h);
+    const shouldHide = HIDDEN_KEYWORDS.some(keyword => normalizedHeader.includes(normKey(keyword)));
     return !shouldHide;
   });
 
-  const priority = ["ARTICULO", "ARTÍCULO", "SUBARTICULO", "SUBARTÍCULO"];
+  const priority = ["ARTICULO", "SUBARTICULO"];
   return visible.sort((a, b) => {
-    const normA = norm(a);
-    const normB = norm(b);
-    const idxA = priority.indexOf(normA);
-    const idxB = priority.indexOf(normB);
+    const normA = normKey(a);
+    const normB = normKey(b);
+    const idxA = priority.findIndex(p => normA.includes(normKey(p)));
+    const idxB = priority.findIndex(p => normB.includes(normKey(p)));
     
     if (idxA !== -1 && idxB !== -1) return idxA - idxB;
     if (idxA !== -1) return -1;
@@ -95,20 +123,9 @@ const getVisibleHeaders = (headers: string[]) => {
 const formatCOP = (val: number) => 
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val);
 
-const getSourceIcon = (source: LocalDatabase['source']) => {
-  switch (source) {
-    case 'upload': return <Upload size={16} className="text-amber-600" />;
-    case 'cache': return <HardDrive size={16} className="text-sky-600" />;
-    default: return <DbIcon size={16} className="text-slate-400" />;
-  }
-};
-
-const getSourceLabel = (source: LocalDatabase['source']) => {
-  switch (source) {
-    case 'upload': return 'Archivo Local';
-    case 'cache': return 'Caché Persistente';
-    default: return 'Origen Desconocido';
-  }
+const dateToExcelSerial = (d: Date) => {
+  const utc = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.floor(utc / 86400000) + 25569;
 };
 
 const MultiSelect: React.FC<{
@@ -200,9 +217,7 @@ const App: React.FC = () => {
     const initDb = () => {
       setLoading(true);
       const cached = loadDbFromCache();
-      if (cached) {
-        setDb(cached);
-      }
+      if (cached) setDb(cached);
       setLoading(false);
     };
     initDb();
@@ -225,9 +240,7 @@ const App: React.FC = () => {
     }
   };
 
-  const triggerUpload = () => {
-    globalFileInputRef.current?.click();
-  };
+  const triggerUpload = () => globalFileInputRef.current?.click();
 
   const handleAnalyze = async () => {
     if (!db || db.rows.length === 0) return;
@@ -263,65 +276,80 @@ const App: React.FC = () => {
     setSearchTerm("");
   };
 
-  const cols = useMemo(() => {
-    if (!db) return {};
-    return {
-      almacen: findHeader(db.headers, ["ALMACEN", "ALMACÉN", "SEDE", "LOCAL", "TIENDA"]),
-      familia: findHeader(db.headers, ["FAMILIA"]),
-      articulo: findHeader(db.headers, ["ARTICULO", "ARTÍCULO"]),
-      subarticulo: findHeader(db.headers, ["SUBARTICULO", "SUBARTÍCULO", "UNIDAD"]),
-      centro: findHeader(db.headers, ["CENTRO DE COSTOS", "CENTRO COSTOS", "CENTRO_DE_COSTOS"]),
-      fecha: findHeader(db.headers, ["FECHA", "DATE"]),
-      costAdj: findHeader(db.headers, ["COSTO AJUSTE", "DIFERENCIA COSTO"]),
-      stockSistema: findHeader(db.headers, ["STOCK A FECHA"]),
-      stockConteo: findHeader(db.headers, ["STOCK INVENTARIO", "STOCK INVENTARIADO", "STOCK_INVENTARIO"]),
-      costLine: findHeader(db.headers, ["COSTE LINEA", "COSTE LANEA", "COSTELANEA", "COSTO LINEA", "COSTO TOTAL"])
-    };
-  }, [db]);
+  const aliases = {
+    almacen: ["ALMACEN", "ALMACÉN", "SEDE", "LOCAL", "TIENDA"],
+    familia: ["FAMILIA"],
+    articulo: ["ARTICULO", "ARTÍCULO"],
+    centro: ["CENTRO DE COSTOS", "CENTRO COSTOS", "CENTRO_DE_COSTOS"],
+    fecha: ["FECHA", "DATE"],
+    costAdj: ["COSTO AJUSTE", "DIFERENCIA COSTO", "COSTO_AJUSTE"],
+    stockSistema: ["STOCK A FECHA", "STOCK_A_FECHA"],
+    stockConteo: ["STOCK INVENTARIO", "STOCK INVENTARIADO", "STOCK_INVENTARIO"],
+    costLine: ["COSTE LINEA", "COSTE LANEA", "COSTELANEA", "COSTO LINEA", "COSTO TOTAL", "COSTE LÃNEA"]
+  };
 
-  const getOptions = (col: string | null | undefined) => {
-    if (!db || !col) return [];
+  const optAlmacen = useMemo(() => {
+    if (!db) return [];
     const set = new Set<string>();
     db.rows.forEach(r => {
-      const v = String(r[col] ?? "").trim();
+      const v = String(getByAliases(r, aliases.almacen) || "").trim();
       if (v) set.add(v);
     });
     return Array.from(set).sort();
-  };
+  }, [db]);
 
-  const optAlmacen = useMemo(() => getOptions(cols.almacen), [db, cols.almacen]);
-  const optFamilia = useMemo(() => getOptions(cols.familia), [db, cols.familia]);
-  const optCentro = useMemo(() => getOptions(cols.centro), [db, cols.centro]);
+  const optFamilia = useMemo(() => {
+    if (!db) return [];
+    const set = new Set<string>();
+    db.rows.forEach(r => {
+      const v = String(getByAliases(r, aliases.familia) || "").trim();
+      if (v) set.add(v);
+    });
+    return Array.from(set).sort();
+  }, [db]);
+
+  const optCentro = useMemo(() => {
+    if (!db) return [];
+    const set = new Set<string>();
+    db.rows.forEach(r => {
+      const v = String(getByAliases(r, aliases.centro) || "").trim();
+      if (v) set.add(v);
+    });
+    return Array.from(set).sort();
+  }, [db]);
 
   const filteredRows = useMemo(() => {
     if (!db) return [];
     const d1 = desde ? dateToExcelSerial(new Date(desde + "T00:00:00")) : null;
     const d2 = hasta ? dateToExcelSerial(new Date(hasta + "T23:59:59")) : null;
-    const term = norm(searchTerm);
+    const term = normKey(searchTerm);
     return db.rows.filter(r => {
-      if (term && !Object.values(r).some(val => norm(String(val)).includes(term))) return false;
-      if (cols.almacen && selAlmacen.length && !selAlmacen.includes(String(r[cols.almacen]).trim())) return false;
-      if (cols.familia && selFamilia.length && !selFamilia.includes(String(r[cols.familia]).trim())) return false;
-      if (cols.centro && selCentro.length && !selCentro.includes(String(r[cols.centro]).trim())) return false;
+      if (term && !Object.values(r).some(val => normKey(String(val)).includes(term))) return false;
       
-      // Filtro de Estado (Novedad)
-      if (selStatus.length) {
-        const sis = parseFloat(String(r[cols.stockSistema || ""]).replace(/[^0-9.-]+/g, "")) || 0;
-        const con = parseFloat(String(r[cols.stockConteo || ""]).replace(/[^0-9.-]+/g, "")) || 0;
-        const diff = con - sis;
-        const novedad = diff === 0 ? "SIN NOVEDAD" : (diff < 0 ? "FALTANTE" : "SOBRANTE");
-        if (!selStatus.includes(novedad)) return false;
-      }
+      const rowSede = String(getByAliases(r, aliases.almacen) || "").trim();
+      if (selAlmacen.length && !selAlmacen.includes(rowSede)) return false;
 
-      if (cols.fecha && (d1 !== null || d2 !== null)) {
-        const rawDate = Number(r[cols.fecha]);
-        if (!Number.isFinite(rawDate)) return false;
+      const rowFamilia = String(getByAliases(r, aliases.familia) || "").trim();
+      if (selFamilia.length && !selFamilia.includes(rowFamilia)) return false;
+
+      const rowCentro = String(getByAliases(r, aliases.centro) || "").trim();
+      if (selCentro.length && !selCentro.includes(rowCentro)) return false;
+      
+      const sis = toNumber(getByAliases(r, aliases.stockSistema));
+      const con = toNumber(getByAliases(r, aliases.stockConteo));
+      const diff = con - sis;
+      const novedad = diff === 0 ? "SIN NOVEDAD" : (diff < 0 ? "FALTANTE" : "SOBRANTE");
+      if (selStatus.length && !selStatus.includes(novedad)) return false;
+
+      const rawDate = Number(getByAliases(r, aliases.fecha));
+      if (Number.isFinite(rawDate)) {
         if (d1 !== null && rawDate < d1) return false;
         if (d2 !== null && rawDate > d2) return false;
       }
+
       return true;
     });
-  }, [db, cols, selAlmacen, selFamilia, selCentro, selStatus, desde, hasta, searchTerm]);
+  }, [db, selAlmacen, selFamilia, selCentro, selStatus, desde, hasta, searchTerm]);
 
   const metrics = useMemo(() => {
     if (!db || filteredRows.length === 0) return { reliability: 0, negativeAdj: 0, totalAdj: 0 };
@@ -332,46 +360,36 @@ const App: React.FC = () => {
     let totalSum = 0;
     
     filteredRows.forEach(row => {
-      const sis = parseFloat(String(row[cols.stockSistema || ""]).replace(/[^0-9.-]+/g, "")) || 0;
-      const con = parseFloat(String(row[cols.stockConteo || ""]).replace(/[^0-9.-]+/g, "")) || 0;
-      const adjVal = parseFloat(String(row[cols.costAdj || ""]).replace(/[^0-9.-]+/g, "")) || 0;
+      const sis = toNumber(getByAliases(row, aliases.stockSistema));
+      const con = toNumber(getByAliases(row, aliases.stockConteo));
+      const adjVal = toNumber(getByAliases(row, aliases.costAdj));
       
       totalSum += adjVal;
       
-      if (sis !== 0) {
-        const precision = (con / sis) * 100;
-        sumReliability += Math.min(100, precision);
-        validItems++;
-      }
+      // Cálculo Simétrico de Confiabilidad
+      sumReliability += calculateItemReliability(sis, con);
+      validItems++;
       
-      if (adjVal < 0) {
-        negSum += Math.abs(adjVal);
-      }
+      if (adjVal < 0) negSum += Math.abs(adjVal);
     });
 
     return { 
-      reliability: validItems > 0 ? sumReliability / validItems : 100, 
+      reliability: validItems > 0 ? (sumReliability / validItems) * 100 : 100, 
       negativeAdj: negSum, 
       totalAdj: totalSum 
     };
-  }, [filteredRows, cols]);
+  }, [filteredRows]);
 
   const visibleHeaders = useMemo(() => getVisibleHeaders(db ? db.headers : []), [db]);
 
-  const getReliabilityColor = (val: number) => {
-    if (val >= 85) return 'text-brand-success';
-    if (val >= 60) return 'text-amber-500';
-    return 'text-brand-danger';
-  };
-
   const mainAppUI = db ? (
-    <div className="min-h-screen bg-brand-bg text-slate-900 selection:bg-brand-primary/5 selection:text-brand-primary">
+    <div className="min-h-screen bg-brand-bg text-slate-900 selection:bg-brand-primary/5">
       <nav className="bg-white/90 backdrop-blur-xl border-b border-slate-100 px-6 py-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="bg-brand-primary p-2 rounded-xl shadow-lg shadow-brand-primary/20">
             <DbIcon className="text-white w-5 h-5" />
           </div>
-          <h1 className="text-xl font-black tracking-tighter bg-gradient-to-r from-brand-primary to-brand-primary bg-clip-text text-transparent">MaestroDB</h1>
+          <h1 className="text-xl font-black tracking-tighter bg-gradient-to-r from-brand-primary to-brand-primary bg-clip-text text-transparent uppercase">MaestroDB</h1>
         </div>
         <div className="flex gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200">
           {[
@@ -404,40 +422,27 @@ const App: React.FC = () => {
                 <h2 className="text-2xl font-black text-slate-900 tracking-tight">Panel de Operaciones</h2>
                 <p className="text-brand-muted text-[10px] font-bold uppercase tracking-[0.2em]">Mostrando {filteredRows.length.toLocaleString()} registros | {db.name}</p>
               </div>
-              <div className="flex items-center gap-3 bg-white px-4 py-2.5 rounded-2xl border border-slate-100 shadow-sm">
-                {getSourceIcon(db.source)}
-                <span className="text-[10px] font-black text-brand-muted uppercase tracking-widest">{getSourceLabel(db.source)}</span>
-              </div>
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group hover:border-brand-success/30 transition-all">
-                <div className="absolute top-0 right-0 p-4 opacity-[0.05] group-hover:opacity-10 transition-opacity">
-                   <Percent className={`w-24 h-24 ${getReliabilityColor(metrics.reliability)}`} />
-                </div>
-                <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Confiabilidad del Inventario</p>
-                <p className={`text-5xl font-black tabular-nums tracking-tighter ${getReliabilityColor(metrics.reliability)}`}>
+                <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Confiabilidad Real (Simétrica)</p>
+                <p className={`text-5xl font-black tabular-nums tracking-tighter ${metrics.reliability >= 85 ? 'text-brand-success' : metrics.reliability >= 60 ? 'text-amber-500' : 'text-brand-danger'}`}>
                   {metrics.reliability.toFixed(1)}%
                 </p>
-                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Precisión promedio del control físico por ítem</p>
+                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Precisión basada en desviaciones físicas totales</p>
               </div>
 
-              <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group hover:border-brand-danger/30 transition-all">
-                <div className="absolute top-0 right-0 p-4 opacity-[0.05] group-hover:opacity-10 transition-opacity">
-                   <TrendingDown className="w-24 h-24 text-brand-danger" />
-                </div>
+              <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
                 <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Impacto Faltantes</p>
                 <p className="text-3xl font-black text-brand-danger tabular-nums tracking-tight">{formatCOP(metrics.negativeAdj)}</p>
-                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Costo total por diferencias negativas detectadas</p>
+                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Costo total por diferencias negativas</p>
               </div>
 
-              <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group hover:border-brand-primary/30 transition-all">
-                <div className="absolute top-0 right-0 p-4 opacity-[0.05] group-hover:opacity-10 transition-opacity">
-                   <TrendingUp className="w-24 h-24 text-brand-primary" />
-                </div>
+              <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
                 <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Ajuste Neto Periodo</p>
                 <p className={`text-3xl font-black tabular-nums tracking-tight ${metrics.totalAdj < 0 ? 'text-brand-danger' : 'text-brand-primary'}`}>{formatCOP(metrics.totalAdj)}</p>
-                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Balance total entre sobrantes y faltantes</p>
+                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Balance monetario sobrantes vs faltantes</p>
               </div>
             </div>
 
@@ -449,7 +454,7 @@ const App: React.FC = () => {
                   </h3>
                   <div className="relative w-full max-w-md group">
                     <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-brand-primary transition-colors" />
-                    <input type="text" placeholder="Buscar por artículo o unidad..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl py-4 pl-14 pr-8 text-sm focus:outline-none focus:ring-4 focus:ring-brand-primary/5 transition-all placeholder:text-slate-300" />
+                    <input type="text" placeholder="Buscar por artículo o unidad..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl py-4 pl-14 pr-8 text-sm focus:outline-none focus:ring-4 focus:ring-brand-primary/5 transition-all" />
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
@@ -457,7 +462,6 @@ const App: React.FC = () => {
                   <MultiSelect label="Familia" options={optFamilia} value={selFamilia} onChange={setSelFamilia} />
                   <MultiSelect label="Centro de costo" options={optCentro} value={selCentro} onChange={setSelCentro} />
                   <MultiSelect label="Estado" options={["SIN NOVEDAD", "FALTANTE", "SOBRANTE"]} value={selStatus} onChange={setSelStatus} icon={<Filter size={14} />} />
-                  <Button variant={desde || hasta ? "primary" : "secondary"} size="sm" onClick={() => setShowFecha(!showFecha)} leftIcon={<Calendar size={14} />} className="uppercase tracking-tight text-[10px]">Fecha</Button>
                   <Button variant="ghost" size="sm" onClick={handleResetFilters} leftIcon={<X size={14} />} className="ml-auto uppercase tracking-tight text-[10px]">Limpiar</Button>
                 </div>
               </div>
@@ -488,7 +492,6 @@ const App: React.FC = () => {
               <div className="bg-white border border-slate-100 rounded-[2.8rem] p-24 text-center shadow-2xl relative overflow-hidden">
                 <Zap className="w-20 h-20 text-brand-primary mx-auto mb-10" />
                 <h2 className="text-4xl font-black text-slate-900 mb-6 tracking-tight">IA Analítica Maestro</h2>
-                <p className="text-brand-muted mb-12 max-w-sm mx-auto">Análisis profundo sobre {db.rows.length.toLocaleString()} referencias auditadas.</p>
                 <Button variant="primary" size="lg" className="mx-auto" leftIcon={loading ? <RefreshCw className="animate-spin" /> : <Zap />} onClick={handleAnalyze} disabled={loading}>Generar Reporte IA</Button>
               </div>
             ) : (
@@ -503,7 +506,7 @@ const App: React.FC = () => {
           <div className="max-w-2xl mx-auto space-y-8 animate-in slide-in-from-bottom-6 duration-500">
             <div className="bg-white border border-slate-100 rounded-[3rem] p-16 shadow-2xl text-center">
               <HardDrive className="w-16 h-16 text-slate-300 mx-auto mb-8" />
-              <h2 className="text-2xl font-black text-slate-900 mb-4">{db.name}</h2>
+              <h2 className="text-2xl font-black text-slate-900 mb-4 tracking-tight uppercase">{db.name}</h2>
               <div className="flex gap-4 justify-center">
                 <Button variant="secondary" onClick={triggerUpload} leftIcon={<RefreshCw size={18} />}>Cambiar Archivo</Button>
                 <Button variant="danger" onClick={handleClearDb} leftIcon={<Trash2 size={18} />}>Borrar Caché</Button>
@@ -519,9 +522,9 @@ const App: React.FC = () => {
         <div className="bg-brand-primary/10 w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-8">
           <Upload className="w-10 h-10 text-brand-primary" />
         </div>
-        <h1 className="text-3xl font-black text-slate-900 mb-3 tracking-tighter">MaestroDB Auditoría</h1>
+        <h1 className="text-3xl font-black text-slate-900 mb-3 tracking-tighter uppercase">MaestroDB</h1>
         <p className="text-brand-muted text-sm mb-10 leading-relaxed font-medium">Carga tu inventario para iniciar el control de confiabilidad física y financiera.</p>
-        <Button variant="primary" size="lg" className="w-full h-16 text-lg shadow-xl shadow-brand-primary/20" leftIcon={<Upload size={22} />} onClick={triggerUpload}>Seleccionar Archivo</Button>
+        <Button variant="primary" size="lg" className="w-full h-16 text-lg shadow-xl shadow-brand-primary/20 uppercase" leftIcon={<Upload size={22} />} onClick={triggerUpload}>Seleccionar Archivo</Button>
       </div>
     </div>
   );
@@ -533,7 +536,7 @@ const App: React.FC = () => {
       {loading && (
         <div className="fixed inset-0 bg-white/90 backdrop-blur-xl z-[100] flex flex-col items-center justify-center">
           <div className="w-16 h-16 border-4 border-brand-primary border-t-transparent rounded-full animate-spin mb-4"></div>
-          <p className="text-brand-primary font-black uppercase tracking-[0.3em] text-[10px]">Calculando Confiabilidad...</p>
+          <p className="text-brand-primary font-black uppercase tracking-[0.3em] text-[10px]">Calculando Auditoría...</p>
         </div>
       )}
     </>
