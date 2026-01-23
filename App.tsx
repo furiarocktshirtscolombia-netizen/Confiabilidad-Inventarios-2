@@ -28,7 +28,8 @@ import {
   ChevronDown,
   X,
   ArrowRightLeft,
-  Filter
+  Filter,
+  Target
 } from 'lucide-react';
 
 // --- UTILIDADES ROBUSTAS DE AUDITORÍA ---
@@ -68,17 +69,10 @@ const toNumber = (val: any): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-// Fórmula Simétrica de Auditoría: Penaliza tanto faltante como sobrante
+// Fórmula de Calidad del Proceso: 1 si es perfecto (sis === con), 0 si hay error
 const calculateItemReliability = (stockFecha: number, stockInv: number) => {
-  const a = Math.abs(stockFecha);
-  const b = Math.abs(stockInv);
-
-  if (a === 0 && b === 0) return 1.0;
-  if (a === 0 || b === 0) return 0.0;
-
-  const ratio = b / a;
-  const score = ratio <= 1 ? ratio : 1 / ratio; // Simetría: si falta baja, si sobra también baja
-  return Math.max(0, Math.min(1, score));
+  // Tolerancia mínima para flotantes si fuera necesario, pero aquí usamos igualdad estricta de stocks
+  return stockFecha === stockInv ? 1.0 : 0.0;
 };
 
 const HIDDEN_KEYWORDS = [
@@ -352,12 +346,13 @@ const App: React.FC = () => {
   }, [db, selAlmacen, selFamilia, selCentro, selStatus, desde, hasta, searchTerm]);
 
   const metrics = useMemo(() => {
-    if (!db || filteredRows.length === 0) return { reliability: 0, negativeAdj: 0, totalAdj: 0 };
+    if (!db || filteredRows.length === 0) return { reliability: 0, negativeAdj: 0, totalAdj: 0, correctRefs: 0, totalRefs: 0 };
     
     let sumReliability = 0;
     let validItems = 0;
     let negSum = 0; 
     let totalSum = 0;
+    let correctCount = 0;
     
     filteredRows.forEach(row => {
       const sis = toNumber(getByAliases(row, aliases.stockSistema));
@@ -366,21 +361,33 @@ const App: React.FC = () => {
       
       totalSum += adjVal;
       
-      // Cálculo Simétrico de Confiabilidad
-      sumReliability += calculateItemReliability(sis, con);
+      // Confiabilidad Basada en Referencias Correctas (Calidad del Proceso)
+      const isPerfect = sis === con;
+      if (isPerfect) {
+        correctCount++;
+        sumReliability += 1;
+      }
       validItems++;
       
       if (adjVal < 0) negSum += Math.abs(adjVal);
     });
 
     return { 
-      reliability: validItems > 0 ? (sumReliability / validItems) * 100 : 100, 
+      reliability: validItems > 0 ? (correctCount / validItems) * 100 : 100, 
       negativeAdj: negSum, 
-      totalAdj: totalSum 
+      totalAdj: totalSum,
+      correctRefs: correctCount,
+      totalRefs: validItems
     };
   }, [filteredRows]);
 
   const visibleHeaders = useMemo(() => getVisibleHeaders(db ? db.headers : []), [db]);
+
+  const getReliabilityColor = (val: number) => {
+    if (val >= 85) return 'text-brand-success';
+    if (val >= 60) return 'text-amber-500';
+    return 'text-brand-danger';
+  };
 
   const mainAppUI = db ? (
     <div className="min-h-screen bg-brand-bg text-slate-900 selection:bg-brand-primary/5">
@@ -426,15 +433,18 @@ const App: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group hover:border-brand-success/30 transition-all">
-                <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Confiabilidad Real (Simétrica)</p>
-                <p className={`text-5xl font-black tabular-nums tracking-tighter ${metrics.reliability >= 85 ? 'text-brand-success' : metrics.reliability >= 60 ? 'text-amber-500' : 'text-brand-danger'}`}>
+                <div className="absolute top-0 right-0 p-4 opacity-[0.05]">
+                  <Target className={`w-24 h-24 ${getReliabilityColor(metrics.reliability)}`} />
+                </div>
+                <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Confiabilidad del Inventario</p>
+                <p className={`text-5xl font-black tabular-nums tracking-tighter ${getReliabilityColor(metrics.reliability)}`}>
                   {metrics.reliability.toFixed(1)}%
                 </p>
-                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Precisión basada en desviaciones físicas totales</p>
+                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">{metrics.correctRefs} correctas de {metrics.totalRefs} auditadas</p>
               </div>
 
               <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
-                <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Impacto Faltantes</p>
+                <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Impacto de Diferencias</p>
                 <p className="text-3xl font-black text-brand-danger tabular-nums tracking-tight">{formatCOP(metrics.negativeAdj)}</p>
                 <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Costo total por diferencias negativas</p>
               </div>

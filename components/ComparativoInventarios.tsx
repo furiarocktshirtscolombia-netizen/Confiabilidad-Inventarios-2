@@ -65,17 +65,9 @@ const toNumber = (val: any): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-// Fórmula Simétrica de Auditoría
+// Calidad del Proceso: 1 si es perfecto, 0 si hay error
 const calculateItemReliability = (stockFecha: number, stockInv: number) => {
-  const a = Math.abs(stockFecha);
-  const b = Math.abs(stockInv);
-
-  if (a === 0 && b === 0) return 1.0;
-  if (a === 0 || b === 0) return 0.0;
-
-  const ratio = b / a;
-  const score = ratio <= 1 ? ratio : 1 / ratio; 
-  return Math.max(0, Math.min(1, score));
+  return stockFecha === stockInv ? 1.0 : 0.0;
 };
 
 const formatCOP = (val: number) => 
@@ -248,7 +240,7 @@ export default function ComparativoInventarios({
     const allKeys = new Set<string>([...mapA.keys(), ...mapB.keys()]);
     const items: any[] = [];
     
-    let totalReliabilitySum = 0;
+    let correctRefsCount = 0;
     let itemsForAverage = 0;
     let totalImpactoNegativo = 0; 
     let totalImpactoPositivo = 0; 
@@ -269,15 +261,18 @@ export default function ComparativoInventarios({
       const sede = (b ?? a)?.sede || "N/A";
       const centro = (b ?? a)?.centro || "N/A";
 
-      const reliability = calculateItemReliability(sisVal, conVal);
-      totalReliabilitySum += reliability;
+      // Calidad del Proceso: 1 si es perfecto, 0 si hay error
+      const isPerfect = sisVal === conVal;
+      const score = isPerfect ? 1.0 : 0.0;
+      
+      if (isPerfect) correctRefsCount++;
       itemsForAverage++;
 
       if (!sedeGroups[sede]) sedeGroups[sede] = { sum: 0, count: 0 };
       if (!centroGroups[centro]) centroGroups[centro] = { sum: 0, count: 0 };
-      sedeGroups[sede].sum += reliability;
+      sedeGroups[sede].sum += score;
       sedeGroups[sede].count++;
-      centroGroups[centro].sum += reliability;
+      centroGroups[centro].sum += score;
       centroGroups[centro].count++;
       
       if (impacto < 0) totalImpactoNegativo += Math.abs(impacto);
@@ -292,7 +287,7 @@ export default function ComparativoInventarios({
         conVal,
         diff,
         novedad,
-        reliability: reliability * 100,
+        reliability: score * 100,
         costUnit: cost,
         impacto,
         sede,
@@ -300,7 +295,7 @@ export default function ComparativoInventarios({
       });
     }
 
-    const reliability = itemsForAverage > 0 ? (totalReliabilitySum / itemsForAverage) * 100 : 100;
+    const reliability = itemsForAverage > 0 ? (correctRefsCount / itemsForAverage) * 100 : 100;
 
     const sedeChartData = Object.entries(sedeGroups).map(([name, data]) => ({
       name,
@@ -325,6 +320,7 @@ export default function ComparativoInventarios({
       totalImpactoPositivo, 
       totalRefs: allKeys.size, 
       itemsAuditados: itemsForAverage,
+      correctRefs: correctRefsCount,
       sedeChartData,
       centroChartData
     };
@@ -344,7 +340,7 @@ export default function ComparativoInventarios({
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
         <div>
           <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Auditoría de Control Físico</h2>
-          <p className="text-brand-muted text-[10px] font-bold uppercase tracking-[0.2em]">Cálculo Simétrico: min(Conteo/Sistema, Sistema/Conteo) × 100</p>
+          <p className="text-brand-muted text-[10px] font-bold uppercase tracking-[0.2em]">Confiabilidad del Inventario: (Refs. Correctas / Total Auditadas) × 100</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm">
@@ -380,38 +376,38 @@ export default function ComparativoInventarios({
               <div className="absolute top-0 right-0 p-4 opacity-[0.05]">
                  <Target className="w-16 h-16 text-brand-success" />
               </div>
-              <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Confiabilidad Simétrica</p>
+              <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Calidad del Conteo</p>
               <p className={`text-5xl font-black tabular-nums tracking-tighter ${comparativo.reliability >= 85 ? 'text-brand-success' : comparativo.reliability >= 60 ? 'text-amber-500' : 'text-brand-danger'}`}>
                 {comparativo.reliability.toFixed(1)}%
               </p>
-              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Precisión promedio por ítem</p>
+              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">{comparativo.correctRefs} de {comparativo.itemsAuditados} refs correctas</p>
             </div>
 
             <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
-              <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Impacto Faltantes</p>
+              <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Impacto de Faltantes</p>
               <p className="text-3xl font-black text-brand-danger tabular-nums tracking-tight">{formatCOP(comparativo.totalImpactoNegativo)}</p>
-              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Valor total faltante</p>
+              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Costo total por faltantes</p>
             </div>
 
             <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
-              <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Auditado / Total</p>
+              <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Impacto de Sobrantes</p>
+              <p className="text-3xl font-black text-brand-success tabular-nums tracking-tight">{formatCOP(comparativo.totalImpactoPositivo)}</p>
+              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Costo total por excedentes</p>
+            </div>
+
+            <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
+              <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Referencias Auditadas</p>
               <p className="text-3xl font-black text-slate-800 tabular-nums tracking-tight">
                 {comparativo.itemsAuditados} / {comparativo.totalRefs}
               </p>
-              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Referencias en análisis</p>
-            </div>
-
-            <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
-              <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Impacto Sobrantes</p>
-              <p className="text-3xl font-black text-brand-success tabular-nums tracking-tight">{formatCOP(comparativo.totalImpactoPositivo)}</p>
-              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Valor total excedente</p>
+              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Total ítems analizados</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white border border-slate-100 p-8 rounded-[3rem] shadow-xl">
               <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-8 flex items-center gap-3">
-                <BarChart3 className="w-4 h-4 text-brand-success" /> Confiabilidad por Sede (%)
+                <BarChart3 className="w-4 h-4 text-brand-success" /> Calidad de Conteo por Sede (%)
               </h3>
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -429,7 +425,7 @@ export default function ComparativoInventarios({
 
             <div className="bg-white border border-slate-100 p-8 rounded-[3rem] shadow-xl">
               <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-8 flex items-center gap-3">
-                <BarChart3 className="w-4 h-4 text-brand-primary" /> Confiabilidad por Centro (%)
+                <BarChart3 className="w-4 h-4 text-brand-primary" /> Calidad de Conteo por Centro (%)
               </h3>
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -449,7 +445,7 @@ export default function ComparativoInventarios({
           <div className="bg-white border border-slate-100 rounded-[3rem] overflow-hidden shadow-2xl">
             <div className="px-10 py-8 border-b border-slate-50 bg-slate-50/20 flex items-center justify-between">
               <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
-                <Table className="w-4 h-4 text-brand-primary" /> Matriz de Auditoría Detallada
+                <Table className="w-4 h-4 text-brand-primary" /> Matriz de Auditoría (Resultados Exactos)
               </h3>
               {selStatus.length > 0 && (
                 <span className="text-[10px] font-bold text-brand-primary uppercase bg-brand-primary/10 px-3 py-1 rounded-full">
@@ -465,7 +461,7 @@ export default function ComparativoInventarios({
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Sistema</th>
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Físico</th>
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Variación</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-right">Confiabilidad</th>
+                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-right">Resultado</th>
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-right">Impacto $</th>
                   </tr>
                 </thead>
@@ -478,8 +474,8 @@ export default function ComparativoInventarios({
                       <td className={`px-10 py-4 text-xs text-center font-black tabular-nums ${r.diff < 0 ? 'text-brand-danger' : r.diff > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
                         {r.diff > 0 ? '+' : ''}{r.diff.toLocaleString()}
                       </td>
-                      <td className={`px-10 py-4 text-xs text-right font-black tabular-nums ${getReliabilityStatus(r.reliability).color === '#2E7D32' ? 'text-brand-success' : 'text-slate-900'}`}>
-                        {r.reliability.toFixed(1)}%
+                      <td className={`px-10 py-4 text-xs text-right font-black tabular-nums ${r.reliability === 100 ? 'text-brand-success' : 'text-brand-danger'}`}>
+                        {r.reliability === 100 ? 'CORRECTO' : 'ERROR'}
                       </td>
                       <td className={`px-10 py-4 text-xs text-right font-black tabular-nums ${r.impacto < 0 ? 'text-brand-danger' : r.impacto > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
                         {formatCOP(Math.abs(r.impacto))}
