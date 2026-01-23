@@ -1,6 +1,6 @@
 import React from 'react';
 import KpiCard, { KpiTone } from './KpiCard';
-import BarRanking from './BarRanking';
+import { DonutGrid } from './DonutGrid';
 import { Target, TrendingDown, TrendingUp, HardDrive } from 'lucide-react';
 import { AuditoriaMetrics } from '../services/auditoriaMetrics';
 
@@ -51,15 +51,15 @@ export default function AuditSummaryGauges({ metrics }: AuditSummaryGaugesProps)
         />
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <BarRanking 
+      {/* Charts Section: Reemplazado por DonutGrid (torticas) */}
+      <div className="grid grid-cols-1 gap-10">
+        <DonutGrid 
           title="CALIDAD DE CONTEO POR SEDE (%)" 
-          data={metrics.bySede} 
+          items={metrics.bySede} 
         />
-        <BarRanking 
+        <DonutGrid 
           title="CALIDAD DE CONTEO POR CENTRO (%)" 
-          data={metrics.byCentro} 
+          items={metrics.byCentro} 
         />
       </div>
     </div>

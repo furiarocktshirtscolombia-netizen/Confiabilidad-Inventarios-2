@@ -52,6 +52,7 @@ const formatCOP = (val: number) =>
 
 function excelSerialToDateString(serial: number) {
   if (!serial || isNaN(serial)) return "N/A";
+  // Truncamos para ignorar la hora y mostrar solo el día
   const utcDays = Math.floor(serial - 25569);
   const d = new Date(utcDays * 86400 * 1000);
   return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -113,9 +114,13 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
     centro: ["CENTRO DE COSTOS", "CENTRO COSTOS"]
   };
 
+  // Obtenemos solo los días (sin horas) para evitar errores de coincidencia
   const fechasUnicas = useMemo(() => {
     const set = new Set<number>();
-    rows.forEach(r => { const v = Number(getByAliases(r, aliases.fecha)); if (Number.isFinite(v)) set.add(v); });
+    rows.forEach(r => { 
+      const v = Number(getByAliases(r, aliases.fecha)); 
+      if (Number.isFinite(v)) set.add(Math.floor(v)); 
+    });
     return Array.from(set).sort((a, b) => a - b);
   }, [rows]);
 
@@ -125,29 +130,44 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
   const [selCentro, setSelCentro] = useState<string[]>([]);
   const [selStatus, setSelStatus] = useState<string[]>([]);
 
+  // Inicialización inteligente: si hay 1 fecha la pone en ambos, si hay 2+ pone las últimas dos
   useEffect(() => {
-    if (fechasUnicas.length >= 2 && (dateA === "" || dateB === "")) {
-      setDateA(fechasUnicas[fechasUnicas.length - 2]);
-      setDateB(fechasUnicas[fechasUnicas.length - 1]);
+    if (fechasUnicas.length > 0 && (dateA === "" || dateB === "")) {
+      if (fechasUnicas.length >= 2) {
+        setDateA(fechasUnicas[fechasUnicas.length - 2]);
+        setDateB(fechasUnicas[fechasUnicas.length - 1]);
+      } else {
+        setDateA(fechasUnicas[0]);
+        setDateB(fechasUnicas[0]);
+      }
     }
   }, [fechasUnicas]);
 
   const comparativoData = useMemo(() => {
     if (dateA === "" || dateB === "") return null;
+    
     const mapA = new Map();
     const mapB = new Map();
+
     rows.forEach(r => {
-      const f = Number(getByAliases(r, aliases.fecha));
+      const fullVal = Number(getByAliases(r, aliases.fecha));
+      if (!Number.isFinite(fullVal)) return;
+      
+      const f = Math.floor(fullVal);
       if (f !== dateA && f !== dateB) return;
+
       const sede = String(getByAliases(r, aliases.sede) || "").trim();
       const centro = String(getByAliases(r, aliases.centro) || "").trim();
       const art = String(getByAliases(r, aliases.articulo) || "").trim().toUpperCase();
       const sub = String(getByAliases(r, aliases.sub) || "").trim().toUpperCase();
       const k = `${art}||${sub}||${sede}||${centro}`;
+      
       const sis = toNumber(getByAliases(r, aliases.stockSistema));
       const con = toNumber(getByAliases(r, aliases.stockConteo));
       const unitCost = toNumber(getByAliases(r, aliases.costoUnit));
+      
       const data = { sis, con, unitCost, art, sub, sede, centro };
+      
       if (f === dateA) mapA.set(k, data);
       if (f === dateB) mapB.set(k, data);
     });
@@ -156,16 +176,20 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
     let items = Array.from(allKeys).map(k => {
       const a = mapA.get(k);
       const b = mapB.get(k);
+      
+      // Si la fecha es la misma, comparamos sis vs con del mismo registro
+      // Si las fechas son distintas, b provee el físico y a provee el sistema base
       const sis = a?.sis ?? 0;
       const con = b?.con ?? 0;
       const unitCost = b?.unitCost ?? a?.unitCost ?? 0;
       const diff = con - sis;
       
-      // Impacto = Variación (diff) * Costo de línea (unitCost)
+      // Impacto = Variación (Físico - Sistema) * Costo Unitario
       const impacto = diff * unitCost;
 
       const sede = (b ?? a).sede;
       const centro = (b ?? a).centro;
+      
       return {
         articulo: (b ?? a).art,
         unidad: (b ?? a).sub,
@@ -174,10 +198,14 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
       };
     });
 
+    // Aplicar filtros de Sede y Centro
     if (selSede.length) items = items.filter(i => selSede.includes(i.sede));
     if (selCentro.length) items = items.filter(i => selCentro.includes(i.centro));
     
+    // Aplicar filtro de Estado (Faltante/Sobrante/OK)
     const filtered = selStatus.length ? items.filter(i => selStatus.includes(i.novedad)) : items;
+    
+    // Ordenar por impacto absoluto (riesgo financiero)
     filtered.sort((x, y) => Math.abs(y.impacto) - Math.abs(x.impacto));
 
     const metrics = buildAuditoriaMetrics(items);
@@ -194,15 +222,29 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
         </div>
         <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm">
           <div className="flex items-center gap-3 pr-4 border-r border-slate-200">
-            <select value={dateA} onChange={e => setDateA(Number(e.target.value))} className="bg-brand-bg border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-brand-primary">
-              <option value="">Base Sistema...</option>
-              {fechasUnicas.map(f => <option key={f} value={f}>{excelSerialToDateString(f)}</option>)}
-            </select>
-            <ArrowRight className="text-slate-300 w-4 h-4" />
-            <select value={dateB} onChange={e => setDateB(Number(e.target.value))} className="bg-brand-bg border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-brand-primary">
-              <option value="">Carga Físico...</option>
-              {fechasUnicas.map(f => <option key={f} value={f}>{excelSerialToDateString(f)}</option>)}
-            </select>
+            <div className="flex flex-col gap-1">
+              <span className="text-[8px] font-black text-slate-400 uppercase ml-1">Sistema Base</span>
+              <select 
+                value={dateA} 
+                onChange={e => setDateA(Number(e.target.value))} 
+                className="bg-brand-bg border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none"
+              >
+                <option value="">Seleccionar...</option>
+                {fechasUnicas.map(f => <option key={f} value={f}>{excelSerialToDateString(f)}</option>)}
+              </select>
+            </div>
+            <ArrowRight className="text-slate-300 w-4 h-4 mt-4" />
+            <div className="flex flex-col gap-1">
+              <span className="text-[8px] font-black text-slate-400 uppercase ml-1">Carga Físico</span>
+              <select 
+                value={dateB} 
+                onChange={e => setDateB(Number(e.target.value))} 
+                className="bg-brand-bg border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none"
+              >
+                <option value="">Seleccionar...</option>
+                {fechasUnicas.map(f => <option key={f} value={f}>{excelSerialToDateString(f)}</option>)}
+              </select>
+            </div>
           </div>
           <div className="flex gap-2">
             <MultiSelect label="Sede" options={Array.from(new Set(rows.map(r => String(getByAliases(r, aliases.sede) || "")))).filter(Boolean).sort()} value={selSede} onChange={setSelSede} />
@@ -263,7 +305,7 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
         <div className="bg-brand-bg border border-dashed border-slate-200 rounded-[2.5rem] p-32 text-center">
           <Calendar className="w-16 h-16 text-slate-200 mx-auto mb-6" />
           <h3 className="text-xl font-bold text-slate-400 mb-2 uppercase">Configuración de Período</h3>
-          <p className="text-sm text-slate-300 max-w-sm mx-auto">Seleccione las fechas para procesar el ranking de riesgo.</p>
+          <p className="text-sm text-slate-300 max-sm mx-auto">Seleccione las fechas para procesar el ranking de riesgo financiero.</p>
         </div>
       )}
     </div>
