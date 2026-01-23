@@ -11,7 +11,8 @@ import {
   X,
   Target,
   BarChart3,
-  Filter
+  Filter,
+  Search
 } from "lucide-react";
 
 type Row = Record<string, any>;
@@ -162,6 +163,7 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
 
   const [dateA, setDateA] = useState<number | "">("");
   const [dateB, setDateB] = useState<number | "">("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [selSede, setSelSede] = useState<string[]>([]);
   const [selCentro, setSelCentro] = useState<string[]>([]);
   const [selStatus, setSelStatus] = useState<string[]>([]);
@@ -230,6 +232,17 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
       };
     });
 
+    // Filtro por Buscador
+    const term = normKey(searchTerm);
+    if (term) {
+      items = items.filter(i => 
+        normKey(i.articulo).includes(term) || 
+        normKey(i.unidad).includes(term) ||
+        normKey(i.sede).includes(term) ||
+        normKey(i.centro).includes(term)
+      );
+    }
+
     if (selSede.length) items = items.filter(i => selSede.includes(i.sede));
     if (selCentro.length) items = items.filter(i => selCentro.includes(i.centro));
     
@@ -238,7 +251,7 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
 
     const metrics = buildAuditoriaMetrics(items);
     return { items: filtered, metrics };
-  }, [dateA, dateB, rows, selSede, selCentro, selStatus]);
+  }, [dateA, dateB, rows, selSede, selCentro, selStatus, searchTerm]);
 
   const sedesList = useMemo(() => 
     Array.from(new Set(rows.map(r => String(getByAliases(r, aliases.sede) || "").trim())))
@@ -251,38 +264,52 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Auditoría de Control Físico</h2>
-          <p className="text-brand-muted text-[10px] font-bold uppercase tracking-[0.2em]">Cálculo: (Refs. Correctas / Total Auditadas) × 100</p>
-        </div>
-        
-        {/* FILTRO DE FECHA UNIFICADO CON DISEÑO SOLICITADO (ESTILO EXPLORADOR) */}
-        <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm">
-          <div className="flex items-center gap-2 bg-slate-100/50 rounded-xl px-4 py-1.5 border border-slate-200">
-            <Calendar size={14} className="text-brand-primary" />
-            <input 
-              type="date" 
-              value={serialToIso(dateA)} 
-              onChange={e => setDateA(isoToSerial(e.target.value))} 
-              className="bg-transparent text-[10px] font-bold outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors cursor-pointer"
-            />
-            <span className="text-slate-300 mx-1 font-bold">→</span>
-            <input 
-              type="date" 
-              value={serialToIso(dateB)} 
-              onChange={e => setDateB(isoToSerial(e.target.value))} 
-              className="bg-transparent text-[10px] font-bold outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors cursor-pointer"
-            />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4">
+          <div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Auditoría de Control Físico</h2>
+            <p className="text-brand-muted text-[10px] font-bold uppercase tracking-[0.2em]">Cálculo: (Refs. Correctas / Total Auditadas) × 100</p>
           </div>
-
-          <div className="flex gap-2">
-            <MultiSelect label="Sede" options={sedesList} value={selSede} onChange={setSelSede} />
-            <MultiSelect label="Centro" options={centrosList} value={selCentro} onChange={setSelCentro} />
-            <MultiSelect label="Estado" options={["SIN NOVEDAD", "FALTANTE", "SOBRANTE"]} value={selStatus} onChange={setSelStatus} icon={<Filter size={14} />} />
-            <Button variant="ghost" size="sm" onClick={() => { setSelSede([]); setSelCentro([]); setSelStatus([]); }} leftIcon={<X size={14} />} className="uppercase tracking-tight text-[10px]">Limpiar</Button>
+          
+          {/* BUSCADOR UNIFICADO */}
+          <div className="relative w-full max-w-md group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-brand-primary transition-colors" />
+            <input 
+              type="text" 
+              placeholder="Buscar por artículo o unidad..." 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-6 text-sm focus:outline-none focus:ring-4 focus:ring-brand-primary/5 transition-all shadow-sm" 
+            />
           </div>
         </div>
       </header>
+
+      {/* FILTROS Y CALENDARIO */}
+      <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-2 bg-slate-100/50 rounded-xl px-4 py-1.5 border border-slate-200">
+          <Calendar size={14} className="text-brand-primary" />
+          <input 
+            type="date" 
+            value={serialToIso(dateA)} 
+            onChange={e => setDateA(isoToSerial(e.target.value))} 
+            className="bg-transparent text-[10px] font-bold outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors cursor-pointer"
+          />
+          <span className="text-slate-300 mx-1 font-bold">→</span>
+          <input 
+            type="date" 
+            value={serialToIso(dateB)} 
+            onChange={e => setDateB(isoToSerial(e.target.value))} 
+            className="bg-transparent text-[10px] font-bold outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors cursor-pointer"
+          />
+        </div>
+
+        <div className="flex gap-2">
+          <MultiSelect label="Sede" options={sedesList} value={selSede} onChange={setSelSede} />
+          <MultiSelect label="Centro" options={centrosList} value={selCentro} onChange={setSelCentro} />
+          <MultiSelect label="Estado" options={["SIN NOVEDAD", "FALTANTE", "SOBRANTE"]} value={selStatus} onChange={setSelStatus} icon={<Filter size={14} />} />
+          <Button variant="ghost" size="sm" onClick={() => { setSelSede([]); setSelCentro([]); setSelStatus([]); setSearchTerm(""); }} leftIcon={<X size={14} />} className="uppercase tracking-tight text-[10px]">Limpiar</Button>
+        </div>
+      </div>
 
       {comparativoData ? (
         <>
@@ -326,6 +353,13 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
                       </tr>
                     );
                   })}
+                  {comparativoData.items.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-10 py-20 text-center text-slate-300 font-black uppercase tracking-widest text-[10px]">
+                        No se encontraron resultados para la búsqueda
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
