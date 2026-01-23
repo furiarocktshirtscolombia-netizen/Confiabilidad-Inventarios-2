@@ -1,6 +1,6 @@
 import React from 'react';
 import KpiCard, { KpiTone } from './KpiCard';
-import BarRanking from './BarRanking';
+import { DonutGrid } from './DonutGrid';
 import { Target, TrendingDown, TrendingUp, HardDrive } from 'lucide-react';
 import { AuditoriaMetrics } from '../services/auditoriaMetrics';
 
@@ -12,7 +12,6 @@ const formatCOP = (val: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val);
 
 export default function AuditSummaryGauges({ metrics }: AuditSummaryGaugesProps) {
-  // Semáforo dinámico sincronizado: >=85 Verde, >=70 Amarillo, <70 Rojo
   const reliabilityTone: KpiTone = 
     metrics.calidadConteoPct >= 85 ? "success" : 
     metrics.calidadConteoPct >= 70 ? "warning" : "danger";
@@ -51,15 +50,15 @@ export default function AuditSummaryGauges({ metrics }: AuditSummaryGaugesProps)
         />
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <BarRanking 
+      {/* Charts Section - Sustituido BarRanking por DonutGrid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+        <DonutGrid 
           title="CALIDAD DE CONTEO POR SEDE (%)" 
-          data={metrics.bySede} 
+          items={metrics.bySede.map(s => ({ name: s.name, pct: s.pct }))} 
         />
-        <BarRanking 
+        <DonutGrid 
           title="CALIDAD DE CONTEO POR CENTRO (%)" 
-          data={metrics.byCentro} 
+          items={metrics.byCentro.map(c => ({ name: c.name, pct: c.pct }))} 
         />
       </div>
     </div>
