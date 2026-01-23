@@ -11,8 +11,7 @@ import {
   X,
   Target,
   BarChart3,
-  Filter,
-  Search
+  Filter
 } from "lucide-react";
 
 type Row = Record<string, any>;
@@ -58,19 +57,6 @@ function excelSerialToDateString(serial: number) {
   return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-// Auxiliares para conversión entre ISO e Excel Serial
-const serialToIso = (serial: number | ""): string => {
-  if (serial === "") return "";
-  const d = new Date(Math.floor(serial - 25569) * 86400 * 1000);
-  return d.toISOString().split('T')[0];
-};
-
-const isoToSerial = (iso: string): number => {
-  if (!iso) return 0;
-  const d = new Date(iso + "T00:00:00");
-  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000) + 25569;
-};
-
 const getRiskInfo = (impacto: number) => {
   const x = Math.abs(impacto);
   if (x >= 500000) return { label: "ALTO", color: "#C62828", bg: "bg-red-50 text-red-600 border-red-100" };
@@ -82,57 +68,32 @@ const getRiskInfo = (impacto: number) => {
 function MultiSelect({ label, options, value, onChange, icon }: any) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  
   useEffect(() => {
-    const handleClick = (e: any) => { 
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false); 
-    };
+    const handleClick = (e: any) => { if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false); };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
-
   return (
     <div className="relative" ref={containerRef}>
-      <Button 
-        variant={value.length > 0 ? "primary" : "secondary"} 
-        size="sm" 
-        onClick={() => setOpen(!open)} 
-        leftIcon={icon} 
-        rightIcon={<ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />} 
-        className="uppercase tracking-tight text-[10px]"
-      >
+      <Button variant={value.length > 0 ? "primary" : "secondary"} size="sm" onClick={() => setOpen(!open)} leftIcon={icon} rightIcon={<ChevronDown size={14} />} className="uppercase tracking-tight text-[10px]">
         {label}{value.length ? ` (${value.length})` : ""}
       </Button>
       {open && (
-        <div className="absolute z-[60] mt-2 w-64 max-h-72 overflow-auto rounded-2xl bg-white border border-slate-200 p-4 shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="absolute z-[60] mt-2 w-64 max-h-72 overflow-auto rounded-2xl bg-white border border-slate-200 p-4 shadow-2xl animate-in zoom-in-95">
           <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-100">
-            <span className="text-[10px] font-black text-brand-muted uppercase tracking-widest">{label}</span>
-            <button 
-              onClick={(e) => { e.stopPropagation(); onChange([]); }} 
-              className="text-[10px] text-brand-primary font-bold hover:underline"
-            >
-              Limpiar
-            </button>
+            <span className="text-[10px] font-black text-brand-muted uppercase">{label}</span>
+            <button onClick={() => onChange([])} className="text-[10px] text-brand-primary font-bold">Limpiar</button>
           </div>
           <div className="space-y-1">
-            {options.length === 0 ? (
-              <p className="text-[10px] text-slate-400 italic py-2">Sin opciones</p>
-            ) : (
-              options.map((opt: string) => (
-                <label key={opt} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer group transition-colors">
-                  <input 
-                    type="checkbox" 
-                    checked={value.includes(opt)} 
-                    onChange={() => {
-                      if (value.includes(opt)) onChange(value.filter((x:any) => x !== opt));
-                      else onChange([...value, opt]);
-                    }} 
-                    className="w-4 h-4 rounded border-slate-300 text-brand-primary focus:ring-brand-primary/20" 
-                  />
-                  <span className="text-xs text-slate-600 group-hover:text-slate-900 truncate">{opt}</span>
-                </label>
-              ))
-            )}
+            {options.map((opt: string) => (
+              <label key={opt} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer">
+                <input type="checkbox" checked={value.includes(opt)} onChange={() => {
+                  if (value.includes(opt)) onChange(value.filter((x:any) => x !== opt));
+                  else onChange([...value, opt]);
+                }} className="w-4 h-4 rounded border-slate-300 text-brand-primary" />
+                <span className="text-xs text-slate-600 truncate">{opt}</span>
+              </label>
+            ))}
           </div>
         </div>
       )}
@@ -149,63 +110,44 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
     stockConteo: ["STOCK INVENTARIO", "STOCK INVENTARIADO", "STOCK_INVENTARIO"],
     costoUnit: ["COSTE LINEA", "COSTO LINEA", "COSTE LANEA", "COSTELANEA", "COSTO UNITARIO", "COSTE UNITARIO", "COSTO UNIT", "COSTE UNIT", "VALOR UNITARIO", "PRECIO UNITARIO"],
     sede: ["SEDE", "ALMACEN", "ALMACÉN"],
-    centro: ["CENTRO DE COSTOS", "CENTRO COSTOS", "CENTRO_DE_COSTOS", "CENTRO COSTO"]
+    centro: ["CENTRO DE COSTOS", "CENTRO COSTOS"]
   };
 
   const fechasUnicas = useMemo(() => {
     const set = new Set<number>();
-    rows.forEach(r => { 
-      const v = Number(getByAliases(r, aliases.fecha)); 
-      if (Number.isFinite(v)) set.add(Math.floor(v)); 
-    });
+    rows.forEach(r => { const v = Number(getByAliases(r, aliases.fecha)); if (Number.isFinite(v)) set.add(v); });
     return Array.from(set).sort((a, b) => a - b);
   }, [rows]);
 
   const [dateA, setDateA] = useState<number | "">("");
   const [dateB, setDateB] = useState<number | "">("");
-  const [searchTerm, setSearchTerm] = useState("");
   const [selSede, setSelSede] = useState<string[]>([]);
   const [selCentro, setSelCentro] = useState<string[]>([]);
   const [selStatus, setSelStatus] = useState<string[]>([]);
 
-  // Inicialización inteligente: Si no hay selección previa, elige los dos últimos
   useEffect(() => {
-    if (fechasUnicas.length > 0 && (dateA === "" || dateB === "")) {
-      if (fechasUnicas.length >= 2) {
-        setDateA(fechasUnicas[fechasUnicas.length - 2]);
-        setDateB(fechasUnicas[fechasUnicas.length - 1]);
-      } else {
-        setDateA(fechasUnicas[0]);
-        setDateB(fechasUnicas[0]);
-      }
+    if (fechasUnicas.length >= 2 && (dateA === "" || dateB === "")) {
+      setDateA(fechasUnicas[fechasUnicas.length - 2]);
+      setDateB(fechasUnicas[fechasUnicas.length - 1]);
     }
   }, [fechasUnicas]);
 
   const comparativoData = useMemo(() => {
     if (dateA === "" || dateB === "") return null;
-    
     const mapA = new Map();
     const mapB = new Map();
-
     rows.forEach(r => {
-      const fullVal = Number(getByAliases(r, aliases.fecha));
-      if (!Number.isFinite(fullVal)) return;
-      
-      const f = Math.floor(fullVal);
+      const f = Number(getByAliases(r, aliases.fecha));
       if (f !== dateA && f !== dateB) return;
-
       const sede = String(getByAliases(r, aliases.sede) || "").trim();
       const centro = String(getByAliases(r, aliases.centro) || "").trim();
       const art = String(getByAliases(r, aliases.articulo) || "").trim().toUpperCase();
       const sub = String(getByAliases(r, aliases.sub) || "").trim().toUpperCase();
       const k = `${art}||${sub}||${sede}||${centro}`;
-      
       const sis = toNumber(getByAliases(r, aliases.stockSistema));
       const con = toNumber(getByAliases(r, aliases.stockConteo));
       const unitCost = toNumber(getByAliases(r, aliases.costoUnit));
-      
       const data = { sis, con, unitCost, art, sub, sede, centro };
-      
       if (f === dateA) mapA.set(k, data);
       if (f === dateB) mapB.set(k, data);
     });
@@ -214,16 +156,16 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
     let items = Array.from(allKeys).map(k => {
       const a = mapA.get(k);
       const b = mapB.get(k);
-      
       const sis = a?.sis ?? 0;
       const con = b?.con ?? 0;
       const unitCost = b?.unitCost ?? a?.unitCost ?? 0;
       const diff = con - sis;
+      
+      // Impacto = Variación (diff) * Costo de línea (unitCost)
       const impacto = diff * unitCost;
 
       const sede = (b ?? a).sede;
       const centro = (b ?? a).centro;
-      
       return {
         articulo: (b ?? a).art,
         unidad: (b ?? a).sub,
@@ -232,17 +174,6 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
       };
     });
 
-    // Filtro por Buscador
-    const term = normKey(searchTerm);
-    if (term) {
-      items = items.filter(i => 
-        normKey(i.articulo).includes(term) || 
-        normKey(i.unidad).includes(term) ||
-        normKey(i.sede).includes(term) ||
-        normKey(i.centro).includes(term)
-      );
-    }
-
     if (selSede.length) items = items.filter(i => selSede.includes(i.sede));
     if (selCentro.length) items = items.filter(i => selCentro.includes(i.centro));
     
@@ -250,66 +181,36 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
     filtered.sort((x, y) => Math.abs(y.impacto) - Math.abs(x.impacto));
 
     const metrics = buildAuditoriaMetrics(items);
+
     return { items: filtered, metrics };
-  }, [dateA, dateB, rows, selSede, selCentro, selStatus, searchTerm]);
-
-  const sedesList = useMemo(() => 
-    Array.from(new Set(rows.map(r => String(getByAliases(r, aliases.sede) || "").trim())))
-      .filter(Boolean).sort(), [rows]);
-
-  const centrosList = useMemo(() => 
-    Array.from(new Set(rows.map(r => String(getByAliases(r, aliases.centro) || "").trim())))
-      .filter(Boolean).sort(), [rows]);
+  }, [dateA, dateB, rows, selSede, selCentro, selStatus]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4">
-          <div>
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Auditoría de Control Físico</h2>
-            <p className="text-brand-muted text-[10px] font-bold uppercase tracking-[0.2em]">Cálculo: (Refs. Correctas / Total Auditadas) × 100</p>
+        <div>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Auditoría de Control Físico</h2>
+          <p className="text-brand-muted text-[10px] font-bold uppercase tracking-[0.2em]">Cálculo: (Refs. Correctas / Total Auditadas) × 100</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm">
+          <div className="flex items-center gap-3 pr-4 border-r border-slate-200">
+            <select value={dateA} onChange={e => setDateA(Number(e.target.value))} className="bg-brand-bg border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-brand-primary">
+              <option value="">Base Sistema...</option>
+              {fechasUnicas.map(f => <option key={f} value={f}>{excelSerialToDateString(f)}</option>)}
+            </select>
+            <ArrowRight className="text-slate-300 w-4 h-4" />
+            <select value={dateB} onChange={e => setDateB(Number(e.target.value))} className="bg-brand-bg border border-slate-200 rounded-2xl px-4 py-2 text-xs font-bold text-brand-primary">
+              <option value="">Carga Físico...</option>
+              {fechasUnicas.map(f => <option key={f} value={f}>{excelSerialToDateString(f)}</option>)}
+            </select>
           </div>
-          
-          {/* BUSCADOR UNIFICADO */}
-          <div className="relative w-full max-w-md group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-brand-primary transition-colors" />
-            <input 
-              type="text" 
-              placeholder="Buscar por artículo o unidad..." 
-              value={searchTerm} 
-              onChange={(e) => setSearchTerm(e.target.value)} 
-              className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-6 text-sm focus:outline-none focus:ring-4 focus:ring-brand-primary/5 transition-all shadow-sm" 
-            />
+          <div className="flex gap-2">
+            <MultiSelect label="Sede" options={Array.from(new Set(rows.map(r => String(getByAliases(r, aliases.sede) || "")))).filter(Boolean).sort()} value={selSede} onChange={setSelSede} />
+            <MultiSelect label="Centro" options={Array.from(new Set(rows.map(r => String(getByAliases(r, aliases.centro) || "")))).filter(Boolean).sort()} value={selCentro} onChange={setSelCentro} />
+            <MultiSelect label="Estado" options={["SIN NOVEDAD", "FALTANTE", "SOBRANTE"]} value={selStatus} onChange={setSelStatus} icon={<Filter size={14} />} />
           </div>
         </div>
       </header>
-
-      {/* FILTROS Y CALENDARIO */}
-      <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm">
-        <div className="flex items-center gap-2 bg-slate-100/50 rounded-xl px-4 py-1.5 border border-slate-200">
-          <Calendar size={14} className="text-brand-primary" />
-          <input 
-            type="date" 
-            value={serialToIso(dateA)} 
-            onChange={e => setDateA(isoToSerial(e.target.value))} 
-            className="bg-transparent text-[10px] font-bold outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors cursor-pointer"
-          />
-          <span className="text-slate-300 mx-1 font-bold">→</span>
-          <input 
-            type="date" 
-            value={serialToIso(dateB)} 
-            onChange={e => setDateB(isoToSerial(e.target.value))} 
-            className="bg-transparent text-[10px] font-bold outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors cursor-pointer"
-          />
-        </div>
-
-        <div className="flex gap-2">
-          <MultiSelect label="Sede" options={sedesList} value={selSede} onChange={setSelSede} />
-          <MultiSelect label="Centro" options={centrosList} value={selCentro} onChange={setSelCentro} />
-          <MultiSelect label="Estado" options={["SIN NOVEDAD", "FALTANTE", "SOBRANTE"]} value={selStatus} onChange={setSelStatus} icon={<Filter size={14} />} />
-          <Button variant="ghost" size="sm" onClick={() => { setSelSede([]); setSelCentro([]); setSelStatus([]); setSearchTerm(""); }} leftIcon={<X size={14} />} className="uppercase tracking-tight text-[10px]">Limpiar</Button>
-        </div>
-      </div>
 
       {comparativoData ? (
         <>
@@ -353,13 +254,6 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
                       </tr>
                     );
                   })}
-                  {comparativoData.items.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="px-10 py-20 text-center text-slate-300 font-black uppercase tracking-widest text-[10px]">
-                        No se encontraron resultados para la búsqueda
-                      </td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
             </div>
@@ -369,7 +263,7 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
         <div className="bg-brand-bg border border-dashed border-slate-200 rounded-[2.5rem] p-32 text-center">
           <Calendar className="w-16 h-16 text-slate-200 mx-auto mb-6" />
           <h3 className="text-xl font-bold text-slate-400 mb-2 uppercase">Configuración de Período</h3>
-          <p className="text-sm text-slate-300 max-sm mx-auto">Seleccione las fechas para procesar el ranking de riesgo financiero.</p>
+          <p className="text-sm text-slate-300 max-w-sm mx-auto">Seleccione las fechas para procesar el ranking de riesgo.</p>
         </div>
       )}
     </div>
