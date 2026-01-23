@@ -1,4 +1,3 @@
-
 export interface AuditoriaMetrics {
   total: number;
   correctas: number;
@@ -11,39 +10,57 @@ export interface AuditoriaMetrics {
 
 export function buildAuditoriaMetrics(items: any[]): AuditoriaMetrics {
   const total = items.length;
-  const correctas = items.filter(i => i.diff === 0 || i.sis === i.con).length;
-  const calidadConteoPct = total > 0 ? (correctas / total) * 100 : 100;
+  const correctas = items.filter(i => i.diff === 0).length;
 
   let impactoFaltantes = 0;
   let impactoSobrantes = 0;
 
-  const sedeGroups: Record<string, { total: number; ok: number }> = {};
-  const centroGroups: Record<string, { total: number; ok: number }> = {};
+  const sedeGroups: Record<string, number[]> = {};
+  const centroGroups: Record<string, number[]> = {};
+  const globalReliabilities: number[] = [];
 
   items.forEach(i => {
-    // Calculamos impactos basados en el campo 'impacto' o calculado de diff * cost
-    const imp = i.impacto !== undefined ? i.impacto : (i.diff * (i.unitCost || 0));
+    // 1. Impacto Financiero (acumulado)
+    const imp = i.impacto || 0;
     if (imp < 0) impactoFaltantes += Math.abs(imp);
     if (imp > 0) impactoSobrantes += imp;
 
-    // Agrupación por Sede
-    const sName = i.sede || "N/A";
-    if (!sedeGroups[sName]) sedeGroups[sName] = { total: 0, ok: 0 };
-    sedeGroups[sName].total++;
-    if (i.diff === 0 || i.sis === i.con) sedeGroups[sName].ok++;
+    // 2. Confiabilidad Física por Ítem
+    // REGLA: Confiabilidad_item = MIN(Stock_inventario / Stock_a_fecha, 1) * 100
+    // EXCEPCIÓN: Si stock a fecha = 0 -> excluir del promedio (regla clave)
+    if (i.sis > 0) {
+      const reliability = Math.min(i.con / i.sis, 1) * 100;
+      
+      const sName = i.sede || "N/A";
+      if (!sedeGroups[sName]) sedeGroups[sName] = [];
+      sedeGroups[sName].push(reliability);
 
-    // Agrupación por Centro
-    const cName = i.centro || "N/A";
-    if (!centroGroups[cName]) centroGroups[cName] = { total: 0, ok: 0 };
-    centroGroups[cName].total++;
-    if (i.diff === 0 || i.sis === i.con) centroGroups[cName].ok++;
+      const cName = i.centro || "N/A";
+      if (!centroGroups[cName]) centroGroups[cName] = [];
+      centroGroups[cName].push(reliability);
+
+      globalReliabilities.push(reliability);
+    }
   });
 
-  const getGroupArray = (groups: Record<string, { total: number; ok: number }>) => 
-    Object.entries(groups).map(([name, v]) => ({
-      name,
-      pct: (v.ok / v.total) * 100
-    })).sort((a, b) => a.pct - b.pct);
+  const calculateAverage = (reliabilities: number[]) => 
+    reliabilities.length > 0 
+      ? reliabilities.reduce((a, b) => a + b, 0) / reliabilities.length 
+      : 0;
+
+  const bySede = Object.entries(sedeGroups).map(([name, rels]) => ({
+    name,
+    pct: calculateAverage(rels)
+  })).sort((a, b) => a.pct - b.pct);
+
+  const byCentro = Object.entries(centroGroups).map(([name, rels]) => ({
+    name,
+    pct: calculateAverage(rels)
+  })).sort((a, b) => a.pct - b.pct);
+
+  const calidadConteoPct = globalReliabilities.length > 0 
+    ? calculateAverage(globalReliabilities) 
+    : 100;
 
   return {
     total,
@@ -51,7 +68,7 @@ export function buildAuditoriaMetrics(items: any[]): AuditoriaMetrics {
     calidadConteoPct,
     impactoFaltantes,
     impactoSobrantes,
-    bySede: getGroupArray(sedeGroups),
-    byCentro: getGroupArray(centroGroups)
+    bySede,
+    byCentro
   };
 }

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import KpiCard, { KpiTone } from './KpiCard';
 import BarRanking from './BarRanking';
@@ -13,7 +12,10 @@ const formatCOP = (val: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val);
 
 export default function AuditSummaryGauges({ metrics }: AuditSummaryGaugesProps) {
-  const reliabilityTone: KpiTone = metrics.calidadConteoPct >= 85 ? "success" : metrics.calidadConteoPct >= 60 ? "warning" : "danger";
+  // Semáforo dinámico sincronizado: >=85 Verde, >=70 Amarillo, <70 Rojo
+  const reliabilityTone: KpiTone = 
+    metrics.calidadConteoPct >= 85 ? "success" : 
+    metrics.calidadConteoPct >= 70 ? "warning" : "danger";
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -22,7 +24,7 @@ export default function AuditSummaryGauges({ metrics }: AuditSummaryGaugesProps)
         <KpiCard
           title="CALIDAD DEL CONTEO"
           value={`${metrics.calidadConteoPct.toFixed(1)}%`}
-          subtitle={`${metrics.correctas} DE ${metrics.total} REFS CORRECTAS`}
+          subtitle={`${metrics.correctas} DE ${metrics.total} REFS COINCIDEN`}
           tone={reliabilityTone}
           icon={Target}
         />

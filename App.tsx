@@ -224,7 +224,6 @@ const App: React.FC = () => {
     articulo: ["ARTICULO", "ARTÍCULO"],
     centro: ["CENTRO DE COSTOS", "CENTRO COSTOS", "CENTRO_DE_COSTOS"],
     fecha: ["FECHA", "DATE"],
-    // Alias para el costo unitario (Costo de Línea según usuario)
     costLine: ["COSTE LINEA", "COSTO LINEA", "COSTE LANEA", "COSTELANEA", "COSTO UNITARIO", "COSTE UNITARIO", "COSTO UNIT", "COSTE UNIT", "VALOR UNITARIO", "PRECIO UNITARIO"],
     stockSistema: ["STOCK A FECHA", "STOCK_A_FECHA"],
     stockConteo: ["STOCK INVENTARIO", "STOCK INVENTARIADO", "STOCK_INVENTARIO"]
