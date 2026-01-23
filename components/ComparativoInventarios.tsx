@@ -461,7 +461,6 @@ export default function ComparativoInventarios({
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Sistema</th>
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Físico</th>
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-center">Variación</th>
-                    <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-right">Resultado</th>
                     <th className="px-10 py-5 text-[10px] font-black text-brand-muted uppercase tracking-widest border-b border-slate-100 text-right">Impacto $</th>
                   </tr>
                 </thead>
@@ -473,9 +472,6 @@ export default function ComparativoInventarios({
                       <td className="px-10 py-4 text-xs text-center text-slate-800 font-bold tabular-nums">{r.conVal.toLocaleString()}</td>
                       <td className={`px-10 py-4 text-xs text-center font-black tabular-nums ${r.diff < 0 ? 'text-brand-danger' : r.diff > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
                         {r.diff > 0 ? '+' : ''}{r.diff.toLocaleString()}
-                      </td>
-                      <td className={`px-10 py-4 text-xs text-right font-black tabular-nums ${r.reliability === 100 ? 'text-brand-success' : 'text-brand-danger'}`}>
-                        {r.reliability === 100 ? 'CORRECTO' : 'ERROR'}
                       </td>
                       <td className={`px-10 py-4 text-xs text-right font-black tabular-nums ${r.impacto < 0 ? 'text-brand-danger' : r.impacto > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
                         {formatCOP(Math.abs(r.impacto))}
