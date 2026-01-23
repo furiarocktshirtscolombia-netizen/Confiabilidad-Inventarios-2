@@ -71,7 +71,6 @@ const toNumber = (val: any): number => {
 
 // Fórmula de Calidad del Proceso: 1 si es perfecto (sis === con), 0 si hay error
 const calculateItemReliability = (stockFecha: number, stockInv: number) => {
-  // Tolerancia mínima para flotantes si fuera necesario, pero aquí usamos igualdad estricta de stocks
   return stockFecha === stockInv ? 1.0 : 0.0;
 };
 
@@ -90,7 +89,9 @@ const HIDDEN_KEYWORDS = [
   "FAMILIA",
   "GRUPO",
   "MARCA",
-  "SUB-FAMILIA"
+  "SUB-FAMILIA",
+  "COBRO",
+  "ESTADO"
 ];
 
 const getVisibleHeaders = (headers: string[]) => {
@@ -101,7 +102,7 @@ const getVisibleHeaders = (headers: string[]) => {
   });
 
   const priority = ["ARTICULO", "SUBARTICULO"];
-  return visible.sort((a, b) => {
+  const sorted = visible.sort((a, b) => {
     const normA = normKey(a);
     const normB = normKey(b);
     const idxA = priority.findIndex(p => normA.includes(normKey(p)));
@@ -112,6 +113,9 @@ const getVisibleHeaders = (headers: string[]) => {
     if (idxB !== -1) return 1;
     return 0;
   });
+
+  // Agregamos manualmente la columna de Costo de Ajuste al final
+  return [...sorted, "COSTO DE AJUSTE"];
 };
 
 const formatCOP = (val: number) => 
@@ -485,7 +489,24 @@ const App: React.FC = () => {
                   <tbody>
                     {filteredRows.slice(0, 100).map((row, i) => (
                       <tr key={i} className="hover:bg-slate-50 transition-colors group">
-                        {visibleHeaders.map((h) => <td key={h} className="px-10 py-5 text-[13px] text-brand-muted border-b border-slate-50 whitespace-nowrap group-hover:text-slate-900">{String(row[h] ?? "")}</td>)}
+                        {visibleHeaders.map((h) => {
+                          if (h === "COSTO DE AJUSTE") {
+                            const sis = toNumber(getByAliases(row, aliases.stockSistema));
+                            const con = toNumber(getByAliases(row, aliases.stockConteo));
+                            const cost = toNumber(getByAliases(row, aliases.costLine));
+                            const adj = (con - sis) * cost;
+                            return (
+                              <td key={h} className={`px-10 py-5 text-[13px] font-bold border-b border-slate-50 whitespace-nowrap group-hover:text-slate-900 ${adj < 0 ? 'text-brand-danger' : adj > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
+                                {formatCOP(adj)}
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={h} className="px-10 py-5 text-[13px] text-brand-muted border-b border-slate-50 whitespace-nowrap group-hover:text-slate-900">
+                              {String(row[h] ?? "")}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
