@@ -10,57 +10,50 @@ export interface AuditoriaMetrics {
 
 export function buildAuditoriaMetrics(items: any[]): AuditoriaMetrics {
   const total = items.length;
+  // Una referencia está correcta únicamente si el conteo físico es igual al stock del sistema (variación = 0)
   const correctas = items.filter(i => i.diff === 0).length;
 
   let impactoFaltantes = 0;
   let impactoSobrantes = 0;
 
-  const sedeGroups: Record<string, number[]> = {};
-  const centroGroups: Record<string, number[]> = {};
-  const globalReliabilities: number[] = [];
+  // Estructuras para agrupar por Sede y Centro
+  const sedeStats: Record<string, { total: number; correctas: number }> = {};
+  const centroStats: Record<string, { total: number; correctas: number }> = {};
 
   items.forEach(i => {
-    // 1. Impacto Financiero (acumulado)
+    // 1. Impacto Financiero
+    // Se mantiene el cálculo: Variación * Costo de línea
     const imp = i.impacto || 0;
     if (imp < 0) impactoFaltantes += Math.abs(imp);
     if (imp > 0) impactoSobrantes += imp;
 
-    // 2. Confiabilidad Física por Ítem
-    // REGLA: Confiabilidad_item = MIN(Stock_inventario / Stock_a_fecha, 1) * 100
-    // EXCEPCIÓN: Si stock a fecha = 0 -> excluir del promedio (regla clave)
-    if (i.sis > 0) {
-      const reliability = Math.min(i.con / i.sis, 1) * 100;
-      
-      const sName = i.sede || "N/A";
-      if (!sedeGroups[sName]) sedeGroups[sName] = [];
-      sedeGroups[sName].push(reliability);
+    // 2. Confiabilidad basada en Referencias Correctas (Lógica Binaria)
+    const sName = i.sede || "N/A";
+    const cName = i.centro || "N/A";
+    const isCorrect = i.diff === 0;
 
-      const cName = i.centro || "N/A";
-      if (!centroGroups[cName]) centroGroups[cName] = [];
-      centroGroups[cName].push(reliability);
+    if (!sedeStats[sName]) sedeStats[sName] = { total: 0, correctas: 0 };
+    sedeStats[sName].total++;
+    if (isCorrect) sedeStats[sName].correctas++;
 
-      globalReliabilities.push(reliability);
-    }
+    if (!centroStats[cName]) centroStats[cName] = { total: 0, correctas: 0 };
+    centroStats[cName].total++;
+    if (isCorrect) centroStats[cName].correctas++;
   });
 
-  const calculateAverage = (reliabilities: number[]) => 
-    reliabilities.length > 0 
-      ? reliabilities.reduce((a, b) => a + b, 0) / reliabilities.length 
-      : 0;
-
-  const bySede = Object.entries(sedeGroups).map(([name, rels]) => ({
+  // Confiabilidad (%) = (Referencias correctas / Total de referencias) * 100
+  const bySede = Object.entries(sedeStats).map(([name, stats]) => ({
     name,
-    pct: calculateAverage(rels)
+    pct: (stats.correctas / stats.total) * 100
   })).sort((a, b) => a.pct - b.pct);
 
-  const byCentro = Object.entries(centroGroups).map(([name, rels]) => ({
+  const byCentro = Object.entries(centroStats).map(([name, stats]) => ({
     name,
-    pct: calculateAverage(rels)
+    pct: (stats.correctas / stats.total) * 100
   })).sort((a, b) => a.pct - b.pct);
 
-  const calidadConteoPct = globalReliabilities.length > 0 
-    ? calculateAverage(globalReliabilities) 
-    : 100;
+  // Calidad del conteo global
+  const calidadConteoPct = total > 0 ? (correctas / total) * 100 : 100;
 
   return {
     total,
