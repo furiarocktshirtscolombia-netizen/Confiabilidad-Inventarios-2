@@ -75,7 +75,7 @@ const getRiskLevel = (impacto: number) => {
 const HIDDEN_KEYWORDS = [
   "COSTE", "COSTO", "COSTELANEA", "SERIE", "CENTRO DE COSTOS", "CENTRO COSTOS",
   "SEDE", "ALMACEN", "ESTABLECIMIENTO", "TIENDA", "FECHA", "FAMILIA", "GRUPO",
-  "MARCA", "SUB-FAMILIA", "COBRO", "ESTADO"
+  "MARCA", "SUB-FAMILIA", "COBRO", "ESTADO", "AJUSTE"
 ];
 
 const getVisibleHeaders = (headers: string[]) => {
@@ -95,7 +95,7 @@ const getVisibleHeaders = (headers: string[]) => {
     return 0;
   });
 
-  return ["RIESGO", ...sorted];
+  return ["RIESGO", ...sorted, "IMPACTO ($)"];
 };
 
 const formatCOP = (val: number) => 
@@ -224,10 +224,10 @@ const App: React.FC = () => {
     articulo: ["ARTICULO", "ARTÍCULO"],
     centro: ["CENTRO DE COSTOS", "CENTRO COSTOS", "CENTRO_DE_COSTOS"],
     fecha: ["FECHA", "DATE"],
-    costAdj: ["COSTO AJUSTE", "DIFERENCIA COSTO", "COSTO_AJUSTE"],
+    // Alias para el costo unitario (Costo de Línea según usuario)
+    costLine: ["COSTE LINEA", "COSTO LINEA", "COSTE LANEA", "COSTELANEA", "COSTO UNITARIO", "COSTE UNITARIO", "COSTO UNIT", "COSTE UNIT", "VALOR UNITARIO", "PRECIO UNITARIO"],
     stockSistema: ["STOCK A FECHA", "STOCK_A_FECHA"],
-    stockConteo: ["STOCK INVENTARIO", "STOCK INVENTARIADO", "STOCK_INVENTARIO"],
-    costLine: ["COSTE LINEA", "COSTE LANEA", "COSTELANEA", "COSTO LINEA", "COSTO TOTAL", "COSTE LÃNEA"]
+    stockConteo: ["STOCK INVENTARIO", "STOCK INVENTARIADO", "STOCK_INVENTARIO"]
   };
 
   const processedRows = useMemo(() => {
@@ -235,10 +235,12 @@ const App: React.FC = () => {
     return db.rows.map(row => {
       const sis = toNumber(getByAliases(row, aliases.stockSistema));
       const con = toNumber(getByAliases(row, aliases.stockConteo));
-      const costLineVal = toNumber(getByAliases(row, aliases.costLine));
-      const unitCost = sis > 0 ? (costLineVal / sis) : costLineVal;
+      const unitCost = toNumber(getByAliases(row, aliases.costLine));
       const diff = con - sis;
+      
+      // Impacto = Variación (diff) * Costo de línea (unitCost)
       const impacto = diff * unitCost;
+
       const sede = String(getByAliases(row, aliases.almacen) || "").trim();
       const centro = String(getByAliases(row, aliases.centro) || "").trim();
       const familia = String(getByAliases(row, aliases.familia) || "").trim();
@@ -384,6 +386,13 @@ const App: React.FC = () => {
                                   </span>
                                 </td>
                               );
+                            }
+                            if (h === "IMPACTO ($)") {
+                                return (
+                                  <td key={h} className={`px-10 py-5 text-[13px] font-bold border-b border-slate-50 whitespace-nowrap ${row.impacto < 0 ? 'text-brand-danger' : row.impacto > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
+                                    {formatCOP(row.impacto)}
+                                  </td>
+                                );
                             }
                             return (
                               <td key={h} className="px-10 py-5 text-[13px] text-brand-muted border-b border-slate-50 whitespace-nowrap group-hover:text-slate-900">

@@ -108,7 +108,7 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
     sub: ["SUBARTICULO", "SUBARTÍCULO", "UNIDAD"],
     stockSistema: ["STOCK A FECHA", "STOCK_A_FECHA"],
     stockConteo: ["STOCK INVENTARIO", "STOCK INVENTARIADO", "STOCK_INVENTARIO"],
-    costoUnit: ["COSTE LINEA", "COSTE LANEA", "COSTO UNITARIO", "COSTELANEA", "COSTE LÃNEA"],
+    costoUnit: ["COSTE LINEA", "COSTO LINEA", "COSTE LANEA", "COSTELANEA", "COSTO UNITARIO", "COSTE UNITARIO", "COSTO UNIT", "COSTE UNIT", "VALOR UNITARIO", "PRECIO UNITARIO"],
     sede: ["SEDE", "ALMACEN", "ALMACÉN"],
     centro: ["CENTRO DE COSTOS", "CENTRO COSTOS"]
   };
@@ -146,8 +146,8 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
       const k = `${art}||${sub}||${sede}||${centro}`;
       const sis = toNumber(getByAliases(r, aliases.stockSistema));
       const con = toNumber(getByAliases(r, aliases.stockConteo));
-      const costLine = toNumber(getByAliases(r, aliases.costoUnit));
-      const data = { sis, con, costLine, art, sub, sede, centro };
+      const unitCost = toNumber(getByAliases(r, aliases.costoUnit));
+      const data = { sis, con, unitCost, art, sub, sede, centro };
       if (f === dateA) mapA.set(k, data);
       if (f === dateB) mapB.set(k, data);
     });
@@ -158,10 +158,12 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
       const b = mapB.get(k);
       const sis = a?.sis ?? 0;
       const con = b?.con ?? 0;
-      const costLine = b?.costLine ?? a?.costLine ?? 0;
-      const unitCost = sis > 0 ? (costLine / sis) : costLine;
+      const unitCost = b?.unitCost ?? a?.unitCost ?? 0;
       const diff = con - sis;
+      
+      // Impacto = Variación (diff) * Costo de línea (unitCost)
       const impacto = diff * unitCost;
+
       const sede = (b ?? a).sede;
       const centro = (b ?? a).centro;
       return {
