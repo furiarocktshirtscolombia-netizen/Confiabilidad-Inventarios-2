@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LocalDatabase, AnalysisResult } from './types';
 import { 
@@ -6,7 +7,9 @@ import {
   clearLocalDb
 } from './services/databaseService';
 import { analyzeData } from './services/geminiService';
+import { buildAuditoriaMetrics } from './services/auditoriaMetrics';
 import ComparativoInventarios from './components/ComparativoInventarios';
+import AuditSummaryGauges from './components/AuditSummaryGauges';
 import Button from './components/Button';
 import { 
   Database as DbIcon, 
@@ -21,9 +24,6 @@ import {
   Trash2,
   Search,
   HardDrive,
-  TrendingDown,
-  TrendingUp,
-  Percent,
   Calendar,
   ChevronDown,
   X,
@@ -38,9 +38,9 @@ const normKey = (s: string) =>
   (s || "")
     .toString()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // quita tildes
+    .replace(/[\u0300-\u036f]/g, "") 
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, ""); // quita espacios/guiones/caracteres raros
+    .replace(/[^a-z0-9]/g, "");
 
 const getByAliases = (row: Record<string, any>, aliases: string[]) => {
   const keys = Object.keys(row);
@@ -57,41 +57,26 @@ const getByAliases = (row: Record<string, any>, aliases: string[]) => {
 const toNumber = (val: any): number => {
   if (typeof val === "number") return Number.isFinite(val) ? val : 0;
   if (val === null || val === undefined) return 0;
-
   let s = String(val).trim();
   if (!s || s === "-") return 0;
-
-  // Manejo de separadores decimales/miles (español vs inglés)
   if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
   else if (s.includes(",") && !s.includes(".")) s = s.replace(",", ".");
-
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 };
 
-// Fórmula de Calidad del Proceso: 1 si es perfecto (sis === con), 0 si hay error
-const calculateItemReliability = (stockFecha: number, stockInv: number) => {
-  return stockFecha === stockInv ? 1.0 : 0.0;
+const getRiskLevel = (impacto: number) => {
+  const x = Math.abs(impacto);
+  if (x >= 500000) return { label: "ALTO", color: "text-brand-danger bg-red-50 border-red-100" };
+  if (x >= 100000) return { label: "MEDIO", color: "text-amber-600 bg-amber-50 border-amber-100" };
+  if (x > 0) return { label: "BAJO", color: "text-sky-600 bg-sky-50 border-sky-100" };
+  return { label: "OK", color: "text-slate-400 bg-slate-50 border-slate-100" };
 };
 
 const HIDDEN_KEYWORDS = [
-  "COSTE",
-  "COSTO",
-  "COSTELANEA",
-  "SERIE",
-  "CENTRO DE COSTOS",
-  "CENTRO COSTOS",
-  "SEDE",
-  "ALMACEN",
-  "ESTABLECIMIENTO",
-  "TIENDA",
-  "FECHA",
-  "FAMILIA",
-  "GRUPO",
-  "MARCA",
-  "SUB-FAMILIA",
-  "COBRO",
-  "ESTADO"
+  "COSTE", "COSTO", "COSTELANEA", "SERIE", "CENTRO DE COSTOS", "CENTRO COSTOS",
+  "SEDE", "ALMACEN", "ESTABLECIMIENTO", "TIENDA", "FECHA", "FAMILIA", "GRUPO",
+  "MARCA", "SUB-FAMILIA", "COBRO", "ESTADO"
 ];
 
 const getVisibleHeaders = (headers: string[]) => {
@@ -103,19 +88,15 @@ const getVisibleHeaders = (headers: string[]) => {
 
   const priority = ["ARTICULO", "SUBARTICULO"];
   const sorted = visible.sort((a, b) => {
-    const normA = normKey(a);
-    const normB = normKey(b);
-    const idxA = priority.findIndex(p => normA.includes(normKey(p)));
-    const idxB = priority.findIndex(p => normB.includes(normKey(p)));
-    
+    const idxA = priority.findIndex(p => normKey(a).includes(normKey(p)));
+    const idxB = priority.findIndex(p => normKey(b).includes(normKey(p)));
     if (idxA !== -1 && idxB !== -1) return idxA - idxB;
     if (idxA !== -1) return -1;
     if (idxB !== -1) return 1;
     return 0;
   });
 
-  // Agregamos manualmente la columna de Costo de Ajuste al final
-  return [...sorted, "COSTO DE AJUSTE"];
+  return ["RIESGO", ...sorted, "COSTO DE AJUSTE"];
 };
 
 const formatCOP = (val: number) => 
@@ -205,7 +186,6 @@ const App: React.FC = () => {
   const [selFamilia, setSelFamilia] = useState<string[]>([]);
   const [selCentro, setSelCentro] = useState<string[]>([]);
   const [selStatus, setSelStatus] = useState<string[]>([]);
-  const [showFecha, setShowFecha] = useState(false);
   const [desde, setDesde] = useState<string>(""); 
   const [hasta, setHasta] = useState<string>(""); 
 
@@ -225,7 +205,6 @@ const App: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     setLoading(true);
-    setStatus({ type: null, message: '' });
     try {
       const parsedDb = await parseUploadedFile(file);
       setDb(parsedDb);
@@ -240,40 +219,6 @@ const App: React.FC = () => {
 
   const triggerUpload = () => globalFileInputRef.current?.click();
 
-  const handleAnalyze = async () => {
-    if (!db || db.rows.length === 0) return;
-    setLoading(true);
-    try {
-      const sample = db.rows.slice(0, 50).map(row => Object.values(row).join(',')).join('\n');
-      const result = await analyzeData(sample);
-      setAnalysis(result);
-      setStatus({ type: 'success', message: 'Análisis de IA completado.' });
-    } catch (e) {
-      setStatus({ type: 'error', message: 'Fallo el análisis de IA.' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleClearDb = () => {
-    if (confirm("¿Deseas eliminar los datos cargados y volver a la pantalla de inicio?")) {
-      clearLocalDb();
-      setDb(null);
-      setAnalysis(null);
-      handleResetFilters();
-    }
-  };
-
-  const handleResetFilters = () => {
-    setSelAlmacen([]);
-    setSelFamilia([]);
-    setSelCentro([]);
-    setSelStatus([]);
-    setDesde("");
-    setHasta("");
-    setSearchTerm("");
-  };
-
   const aliases = {
     almacen: ["ALMACEN", "ALMACÉN", "SEDE", "LOCAL", "TIENDA"],
     familia: ["FAMILIA"],
@@ -286,111 +231,70 @@ const App: React.FC = () => {
     costLine: ["COSTE LINEA", "COSTE LANEA", "COSTELANEA", "COSTO LINEA", "COSTO TOTAL", "COSTE LÃNEA"]
   };
 
-  const optAlmacen = useMemo(() => {
+  const processedRows = useMemo(() => {
     if (!db) return [];
-    const set = new Set<string>();
-    db.rows.forEach(r => {
-      const v = String(getByAliases(r, aliases.almacen) || "").trim();
-      if (v) set.add(v);
-    });
-    return Array.from(set).sort();
-  }, [db]);
+    return db.rows.map(row => {
+      const sis = toNumber(getByAliases(row, aliases.stockSistema));
+      const con = toNumber(getByAliases(row, aliases.stockConteo));
+      const costLineVal = toNumber(getByAliases(row, aliases.costLine));
+      const unitCost = sis > 0 ? (costLineVal / sis) : costLineVal;
+      const diff = con - sis;
+      const impacto = diff * unitCost;
+      const sede = String(getByAliases(row, aliases.almacen) || "").trim();
+      const centro = String(getByAliases(row, aliases.centro) || "").trim();
+      const familia = String(getByAliases(row, aliases.familia) || "").trim();
+      const rawDate = Number(getByAliases(row, aliases.fecha));
 
-  const optFamilia = useMemo(() => {
-    if (!db) return [];
-    const set = new Set<string>();
-    db.rows.forEach(r => {
-      const v = String(getByAliases(r, aliases.familia) || "").trim();
-      if (v) set.add(v);
+      return {
+        ...row,
+        sis, con, diff, impacto, sede, centro, familia, rawDate, unitCost
+      };
     });
-    return Array.from(set).sort();
-  }, [db]);
-
-  const optCentro = useMemo(() => {
-    if (!db) return [];
-    const set = new Set<string>();
-    db.rows.forEach(r => {
-      const v = String(getByAliases(r, aliases.centro) || "").trim();
-      if (v) set.add(v);
-    });
-    return Array.from(set).sort();
   }, [db]);
 
   const filteredRows = useMemo(() => {
-    if (!db) return [];
     const d1 = desde ? dateToExcelSerial(new Date(desde + "T00:00:00")) : null;
     const d2 = hasta ? dateToExcelSerial(new Date(hasta + "T23:59:59")) : null;
     const term = normKey(searchTerm);
-    return db.rows.filter(r => {
+    
+    return processedRows.filter(r => {
       if (term && !Object.values(r).some(val => normKey(String(val)).includes(term))) return false;
+      if (selAlmacen.length && !selAlmacen.includes(r.sede)) return false;
+      if (selFamilia.length && !selFamilia.includes(r.familia)) return false;
+      if (selCentro.length && !selCentro.includes(r.centro)) return false;
       
-      const rowSede = String(getByAliases(r, aliases.almacen) || "").trim();
-      if (selAlmacen.length && !selAlmacen.includes(rowSede)) return false;
-
-      const rowFamilia = String(getByAliases(r, aliases.familia) || "").trim();
-      if (selFamilia.length && !selFamilia.includes(rowFamilia)) return false;
-
-      const rowCentro = String(getByAliases(r, aliases.centro) || "").trim();
-      if (selCentro.length && !selCentro.includes(rowCentro)) return false;
-      
-      const sis = toNumber(getByAliases(r, aliases.stockSistema));
-      const con = toNumber(getByAliases(r, aliases.stockConteo));
-      const diff = con - sis;
-      const novedad = diff === 0 ? "SIN NOVEDAD" : (diff < 0 ? "FALTANTE" : "SOBRANTE");
+      const novedad = r.diff === 0 ? "SIN NOVEDAD" : (r.diff < 0 ? "FALTANTE" : "SOBRANTE");
       if (selStatus.length && !selStatus.includes(novedad)) return false;
 
-      const rawDate = Number(getByAliases(r, aliases.fecha));
-      if (Number.isFinite(rawDate)) {
-        if (d1 !== null && rawDate < d1) return false;
-        if (d2 !== null && rawDate > d2) return false;
+      if (Number.isFinite(r.rawDate)) {
+        if (d1 !== null && r.rawDate < d1) return false;
+        if (d2 !== null && r.rawDate > d2) return false;
       }
-
       return true;
-    });
-  }, [db, selAlmacen, selFamilia, selCentro, selStatus, desde, hasta, searchTerm]);
+    }).sort((a, b) => Math.abs(b.impacto) - Math.abs(a.impacto));
+  }, [processedRows, selAlmacen, selFamilia, selCentro, selStatus, desde, hasta, searchTerm]);
 
-  const metrics = useMemo(() => {
-    if (!db || filteredRows.length === 0) return { reliability: 0, negativeAdj: 0, totalAdj: 0, correctRefs: 0, totalRefs: 0 };
-    
-    let sumReliability = 0;
-    let validItems = 0;
-    let negSum = 0; 
-    let totalSum = 0;
-    let correctCount = 0;
-    
-    filteredRows.forEach(row => {
-      const sis = toNumber(getByAliases(row, aliases.stockSistema));
-      const con = toNumber(getByAliases(row, aliases.stockConteo));
-      const adjVal = toNumber(getByAliases(row, aliases.costAdj));
-      
-      totalSum += adjVal;
-      
-      // Confiabilidad Basada en Referencias Correctas (Calidad del Proceso)
-      const isPerfect = sis === con;
-      if (isPerfect) {
-        correctCount++;
-        sumReliability += 1;
-      }
-      validItems++;
-      
-      if (adjVal < 0) negSum += Math.abs(adjVal);
-    });
-
-    return { 
-      reliability: validItems > 0 ? (correctCount / validItems) * 100 : 100, 
-      negativeAdj: negSum, 
-      totalAdj: totalSum,
-      correctRefs: correctCount,
-      totalRefs: validItems
-    };
-  }, [filteredRows]);
+  const auditoriaMetrics = useMemo(() => buildAuditoriaMetrics(filteredRows), [filteredRows]);
 
   const visibleHeaders = useMemo(() => getVisibleHeaders(db ? db.headers : []), [db]);
 
-  const getReliabilityColor = (val: number) => {
-    if (val >= 85) return 'text-brand-success';
-    if (val >= 60) return 'text-amber-500';
-    return 'text-brand-danger';
+  const handleAnalyze = async () => {
+    if (!db || db.rows.length === 0) return;
+    setLoading(true);
+    try {
+      const sampleRows = filteredRows.slice(0, 50);
+      const csvHeader = db.headers.join('|');
+      const csvBody = sampleRows.map(row => db.headers.map(h => String(row[h] ?? "")).join('|')).join('\n');
+      const dataContent = `Headers: ${csvHeader}\nSample Data:\n${csvBody}`;
+      const result = await analyzeData(dataContent);
+      setAnalysis(result);
+      setStatus({ type: 'success', message: 'Análisis de IA generado correctamente.' });
+    } catch (err: any) {
+      console.error("Analysis Error:", err);
+      setStatus({ type: 'error', message: 'Hubo un problema al generar el reporte de IA.' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const mainAppUI = db ? (
@@ -417,54 +321,17 @@ const App: React.FC = () => {
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto p-6 md:p-8">
-        {status.type && (
-          <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 border animate-in slide-in-from-top-4 ${status.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-brand-success' : 'bg-red-50 border-red-100 text-brand-danger'}`}>
-            {status.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-            <span className="text-sm font-medium">{status.message}</span>
-            <button onClick={() => setStatus({type:null, message:''})} className="ml-auto opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
-          </div>
-        )}
-
+      <main className="max-w-6xl mx-auto p-6 md:p-8 space-y-8">
         {activeTab === 'dashboard' && (
-          <div className="space-y-8 animate-in fade-in duration-500">
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Panel de Operaciones</h2>
-                <p className="text-brand-muted text-[10px] font-bold uppercase tracking-[0.2em]">Mostrando {filteredRows.length.toLocaleString()} registros | {db.name}</p>
-              </div>
-            </header>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group hover:border-brand-success/30 transition-all">
-                <div className="absolute top-0 right-0 p-4 opacity-[0.05]">
-                  <Target className={`w-24 h-24 ${getReliabilityColor(metrics.reliability)}`} />
-                </div>
-                <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Confiabilidad del Inventario</p>
-                <p className={`text-5xl font-black tabular-nums tracking-tighter ${getReliabilityColor(metrics.reliability)}`}>
-                  {metrics.reliability.toFixed(1)}%
-                </p>
-                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">{metrics.correctRefs} correctas de {metrics.totalRefs} auditadas</p>
-              </div>
-
-              <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
-                <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Impacto de Diferencias</p>
-                <p className="text-3xl font-black text-brand-danger tabular-nums tracking-tight">{formatCOP(metrics.negativeAdj)}</p>
-                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Costo total por diferencias negativas</p>
-              </div>
-
-              <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
-                <p className="text-brand-muted text-[10px] font-black uppercase tracking-widest mb-1">Ajuste Neto Periodo</p>
-                <p className={`text-3xl font-black tabular-nums tracking-tight ${metrics.totalAdj < 0 ? 'text-brand-danger' : 'text-brand-primary'}`}>{formatCOP(metrics.totalAdj)}</p>
-                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Balance monetario sobrantes vs faltantes</p>
-              </div>
-            </div>
+          <div className="space-y-12 animate-in fade-in duration-500">
+            {/* KPI Section with Tacometers */}
+            <AuditSummaryGauges metrics={auditoriaMetrics} />
 
             <div className="bg-white border border-slate-100 rounded-[3rem] overflow-hidden shadow-2xl">
               <div className="px-10 py-10 border-b border-slate-50 bg-slate-50/30">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">
                   <h3 className="font-black text-slate-900 flex items-center gap-3 uppercase tracking-[0.25em] text-[10px]">
-                    <Table className="w-5 h-5 text-brand-primary" /> Explorador Maestro
+                    <Table className="w-5 h-5 text-brand-primary" /> Explorador de Auditoría (Filtro Activo)
                   </h3>
                   <div className="relative w-full max-w-md group">
                     <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-brand-primary transition-colors" />
@@ -472,11 +339,10 @@ const App: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <MultiSelect label="Almacén" options={optAlmacen} value={selAlmacen} onChange={setSelAlmacen} />
-                  <MultiSelect label="Familia" options={optFamilia} value={selFamilia} onChange={setSelFamilia} />
-                  <MultiSelect label="Centro de costo" options={optCentro} value={selCentro} onChange={setSelCentro} />
+                  <MultiSelect label="Almacén" options={Array.from(new Set(processedRows.map(r => r.sede))).filter(Boolean).sort()} value={selAlmacen} onChange={setSelAlmacen} />
+                  <MultiSelect label="Familia" options={Array.from(new Set(processedRows.map(r => r.familia))).filter(Boolean).sort()} value={selFamilia} onChange={setSelFamilia} />
                   <MultiSelect label="Estado" options={["SIN NOVEDAD", "FALTANTE", "SOBRANTE"]} value={selStatus} onChange={setSelStatus} icon={<Filter size={14} />} />
-                  <Button variant="ghost" size="sm" onClick={handleResetFilters} leftIcon={<X size={14} />} className="ml-auto uppercase tracking-tight text-[10px]">Limpiar</Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setSelAlmacen([]); setSelFamilia([]); setSelStatus([]); setSearchTerm(""); }} leftIcon={<X size={14} />} className="ml-auto uppercase tracking-tight text-[10px]">Limpiar</Button>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -487,38 +353,45 @@ const App: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.slice(0, 100).map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-50 transition-colors group">
-                        {visibleHeaders.map((h) => {
-                          if (h === "COSTO DE AJUSTE") {
-                            const sis = toNumber(getByAliases(row, aliases.stockSistema));
-                            const con = toNumber(getByAliases(row, aliases.stockConteo));
-                            const cost = toNumber(getByAliases(row, aliases.costLine));
-                            const adj = (con - sis) * cost;
+                    {filteredRows.slice(0, 100).map((row, i) => {
+                      const risk = getRiskLevel(row.impacto);
+                      return (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors group">
+                          {visibleHeaders.map((h) => {
+                            if (h === "RIESGO") {
+                              return (
+                                <td key={h} className="px-10 py-5 border-b border-slate-50">
+                                  <span className={`px-3 py-1 rounded-full text-[10px] font-black border tracking-widest ${risk.color}`}>
+                                    {risk.label}
+                                  </span>
+                                </td>
+                              );
+                            }
+                            if (h === "COSTO DE AJUSTE") {
+                              return (
+                                <td key={h} className={`px-10 py-5 text-[13px] font-bold border-b border-slate-50 whitespace-nowrap ${row.impacto < 0 ? 'text-brand-danger' : row.impacto > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
+                                  {formatCOP(row.impacto)}
+                                </td>
+                              );
+                            }
                             return (
-                              <td key={h} className={`px-10 py-5 text-[13px] font-bold border-b border-slate-50 whitespace-nowrap group-hover:text-slate-900 ${adj < 0 ? 'text-brand-danger' : adj > 0 ? 'text-brand-success' : 'text-slate-400'}`}>
-                                {formatCOP(adj)}
+                              <td key={h} className="px-10 py-5 text-[13px] text-brand-muted border-b border-slate-50 whitespace-nowrap group-hover:text-slate-900">
+                                {String(row[h] ?? "")}
                               </td>
                             );
-                          }
-                          return (
-                            <td key={h} className="px-10 py-5 text-[13px] text-brand-muted border-b border-slate-50 whitespace-nowrap group-hover:text-slate-900">
-                              {String(row[h] ?? "")}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                          })}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
         )}
-
         {activeTab === 'comparative' && <ComparativoInventarios headers={db.headers} rows={db.rows} />}
         {activeTab === 'analysis' && (
-          <div className="max-w-4xl mx-auto space-y-6 animate-in slide-in-from-bottom-6 duration-500">
+          <div className="max-w-4xl mx-auto space-y-6">
             {!analysis ? (
               <div className="bg-white border border-slate-100 rounded-[2.8rem] p-24 text-center shadow-2xl relative overflow-hidden">
                 <Zap className="w-20 h-20 text-brand-primary mx-auto mb-10" />
@@ -528,19 +401,46 @@ const App: React.FC = () => {
             ) : (
               <div className="bg-white border border-brand-primary/10 rounded-[3rem] p-16 shadow-2xl">
                  <h2 className="text-2xl font-black text-slate-900 mb-10 flex items-center gap-4"><Zap className="text-brand-primary" /> Resumen Estratégico</h2>
-                 <p className="text-xl text-slate-700 leading-relaxed italic border-l-8 border-brand-primary pl-8 mb-12 font-serif">"{analysis.summary}"</p>
+                 <p className="text-xl text-slate-700 leading-relaxed italic border-l-8 border-brand-primary pl-8 font-serif">"{analysis.summary}"</p>
+                 <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-primary">Principales Hallazgos</h4>
+                      <ul className="space-y-3">
+                        {analysis.insights.map((insight, idx) => (
+                          <li key={idx} className="flex gap-3 text-sm text-slate-600 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <CheckCircle2 size={16} className="text-brand-primary shrink-0 mt-0.5" />
+                            <span>{insight}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="space-y-4">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-primary">Acciones Sugeridas</h4>
+                      <ul className="space-y-3">
+                        {analysis.suggestedActions.map((action, idx) => (
+                          <li key={idx} className="flex gap-3 text-sm text-slate-600 bg-brand-primary/5 p-4 rounded-2xl border border-brand-primary/10">
+                            <Target size={16} className="text-brand-primary shrink-0 mt-0.5" />
+                            <span>{action}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                 </div>
+                 <div className="mt-12 flex justify-center">
+                    <Button variant="secondary" size="sm" onClick={() => setAnalysis(null)} leftIcon={<RefreshCw size={14} />}>Recalcular con IA</Button>
+                 </div>
               </div>
             )}
           </div>
         )}
         {activeTab === 'settings' && (
-          <div className="max-w-2xl mx-auto space-y-8 animate-in slide-in-from-bottom-6 duration-500">
+          <div className="max-w-2xl mx-auto space-y-8">
             <div className="bg-white border border-slate-100 rounded-[3rem] p-16 shadow-2xl text-center">
               <HardDrive className="w-16 h-16 text-slate-300 mx-auto mb-8" />
-              <h2 className="text-2xl font-black text-slate-900 mb-4 tracking-tight uppercase">{db.name}</h2>
+              <h2 className="text-2xl font-black text-slate-900 mb-4 uppercase">{db.name}</h2>
               <div className="flex gap-4 justify-center">
                 <Button variant="secondary" onClick={triggerUpload} leftIcon={<RefreshCw size={18} />}>Cambiar Archivo</Button>
-                <Button variant="danger" onClick={handleClearDb} leftIcon={<Trash2 size={18} />}>Borrar Caché</Button>
+                <Button variant="danger" onClick={() => { if(confirm("¿Borrar?")) { clearLocalDb(); setDb(null); } }} leftIcon={<Trash2 size={18} />}>Borrar Caché</Button>
               </div>
             </div>
           </div>
@@ -567,7 +467,16 @@ const App: React.FC = () => {
       {loading && (
         <div className="fixed inset-0 bg-white/90 backdrop-blur-xl z-[100] flex flex-col items-center justify-center">
           <div className="w-16 h-16 border-4 border-brand-primary border-t-transparent rounded-full animate-spin mb-4"></div>
-          <p className="text-brand-primary font-black uppercase tracking-[0.3em] text-[10px]">Calculando Auditoría...</p>
+          <p className="text-brand-primary font-black uppercase tracking-[0.3em] text-[10px]">Procesando Auditoría...</p>
+        </div>
+      )}
+      {status.type && (
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl shadow-2xl z-[110] flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-300 ${status.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
+           {status.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+           <span className="text-xs font-bold">{status.message}</span>
+           <button onClick={() => setStatus({ type: null, message: '' })} className="ml-2 p-1 hover:bg-white/20 rounded-lg transition-colors">
+              <X size={14} />
+           </button>
         </div>
       )}
     </>
