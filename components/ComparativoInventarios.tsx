@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import Button from "./Button";
 import AuditSummaryGauges from "./AuditSummaryGauges";
@@ -123,6 +122,7 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
   const [dateA, setDateA] = useState<number | "">("");
   const [dateB, setDateB] = useState<number | "">("");
   const [selSede, setSelSede] = useState<string[]>([]);
+  const [selCentro, setSelCentro] = useState<string[]>([]);
   const [selStatus, setSelStatus] = useState<string[]>([]);
 
   useEffect(() => {
@@ -173,6 +173,7 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
     });
 
     if (selSede.length) items = items.filter(i => selSede.includes(i.sede));
+    if (selCentro.length) items = items.filter(i => selCentro.includes(i.centro));
     
     const filtered = selStatus.length ? items.filter(i => selStatus.includes(i.novedad)) : items;
     filtered.sort((x, y) => Math.abs(y.impacto) - Math.abs(x.impacto));
@@ -180,7 +181,7 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
     const metrics = buildAuditoriaMetrics(items);
 
     return { items: filtered, metrics };
-  }, [dateA, dateB, rows, selSede, selStatus]);
+  }, [dateA, dateB, rows, selSede, selCentro, selStatus]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -203,6 +204,7 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
           </div>
           <div className="flex gap-2">
             <MultiSelect label="Sede" options={Array.from(new Set(rows.map(r => String(getByAliases(r, aliases.sede) || "")))).filter(Boolean).sort()} value={selSede} onChange={setSelSede} />
+            <MultiSelect label="Centro" options={Array.from(new Set(rows.map(r => String(getByAliases(r, aliases.centro) || "")))).filter(Boolean).sort()} value={selCentro} onChange={setSelCentro} />
             <MultiSelect label="Estado" options={["SIN NOVEDAD", "FALTANTE", "SOBRANTE"]} value={selStatus} onChange={setSelStatus} icon={<Filter size={14} />} />
           </div>
         </div>

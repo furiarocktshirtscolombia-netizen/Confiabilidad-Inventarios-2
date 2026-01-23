@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LocalDatabase, AnalysisResult } from './types';
 import { 
@@ -340,9 +339,10 @@ const App: React.FC = () => {
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <MultiSelect label="Almacén" options={Array.from(new Set(processedRows.map(r => r.sede))).filter(Boolean).sort()} value={selAlmacen} onChange={setSelAlmacen} />
+                  <MultiSelect label="Centro" options={Array.from(new Set(processedRows.map(r => r.centro))).filter(Boolean).sort()} value={selCentro} onChange={setSelCentro} />
                   <MultiSelect label="Familia" options={Array.from(new Set(processedRows.map(r => r.familia))).filter(Boolean).sort()} value={selFamilia} onChange={setSelFamilia} />
                   <MultiSelect label="Estado" options={["SIN NOVEDAD", "FALTANTE", "SOBRANTE"]} value={selStatus} onChange={setSelStatus} icon={<Filter size={14} />} />
-                  <Button variant="ghost" size="sm" onClick={() => { setSelAlmacen([]); setSelFamilia([]); setSelStatus([]); setSearchTerm(""); }} leftIcon={<X size={14} />} className="ml-auto uppercase tracking-tight text-[10px]">Limpiar</Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setSelAlmacen([]); setSelCentro([]); setSelFamilia([]); setSelStatus([]); setSearchTerm(""); }} leftIcon={<X size={14} />} className="ml-auto uppercase tracking-tight text-[10px]">Limpiar</Button>
                 </div>
               </div>
               <div className="overflow-x-auto">
