@@ -53,14 +53,9 @@ const dateToExcelSerial = (d: Date) => {
 };
 
 const HIDDEN_KEYWORDS = [
-  "COSTE LINEA",
-  "COSTE LANEA",
+  "COSTE",
+  "COSTO",
   "COSTELANEA",
-  "COSTO LINEA",
-  "COSTO TOTAL",
-  "COSTO AJUSTE",
-  "COSTO UNITARIO",
-  "COSTO_UNITARIO",
   "SERIE",
   "CENTRO DE COSTOS",
   "CENTRO COSTOS",
