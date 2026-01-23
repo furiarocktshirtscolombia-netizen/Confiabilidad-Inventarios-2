@@ -57,6 +57,19 @@ function excelSerialToDateString(serial: number) {
   return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+// Auxiliares para conversión entre ISO e Excel Serial
+const serialToIso = (serial: number | ""): string => {
+  if (serial === "") return "";
+  const d = new Date(Math.floor(serial - 25569) * 86400 * 1000);
+  return d.toISOString().split('T')[0];
+};
+
+const isoToSerial = (iso: string): number => {
+  if (!iso) return 0;
+  const d = new Date(iso + "T00:00:00");
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000) + 25569;
+};
+
 const getRiskInfo = (impacto: number) => {
   const x = Math.abs(impacto);
   if (x >= 500000) return { label: "ALTO", color: "#C62828", bg: "bg-red-50 text-red-600 border-red-100" };
@@ -243,44 +256,23 @@ export default function ComparativoInventarios({ headers, rows }: { headers: str
           <p className="text-brand-muted text-[10px] font-bold uppercase tracking-[0.2em]">Cálculo: (Refs. Correctas / Total Auditadas) × 100</p>
         </div>
         
-        {/* FILTRO DE FECHA INTERACTIVO UNIFICADO */}
+        {/* FILTRO DE FECHA UNIFICADO CON DISEÑO SOLICITADO (ESTILO EXPLORADOR) */}
         <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm">
-          <div className="flex items-center gap-3 pr-4 border-r border-slate-200">
-            {/* Periodo A */}
-            <div className="flex flex-col gap-1">
-              <span className="text-[7px] font-black text-slate-400 uppercase ml-1">Sistema Base</span>
-              <div className="flex items-center gap-2 bg-slate-100/50 rounded-xl px-3 py-1.5 border border-slate-200">
-                <Calendar size={14} className="text-brand-primary" />
-                <select 
-                  value={dateA} 
-                  onChange={e => setDateA(Number(e.target.value))} 
-                  className="bg-transparent text-[10px] font-black outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors cursor-pointer appearance-none"
-                >
-                  <option value="">Seleccionar...</option>
-                  {fechasUnicas.map(f => <option key={f} value={f}>{excelSerialToDateString(f)}</option>)}
-                </select>
-                <ChevronDown size={10} className="text-slate-400" />
-              </div>
-            </div>
-
-            <span className="text-slate-300 font-bold mt-4">→</span>
-
-            {/* Periodo B */}
-            <div className="flex flex-col gap-1">
-              <span className="text-[7px] font-black text-slate-400 uppercase ml-1">Carga Físico</span>
-              <div className="flex items-center gap-2 bg-slate-100/50 rounded-xl px-3 py-1.5 border border-slate-200">
-                <Calendar size={14} className="text-brand-primary" />
-                <select 
-                  value={dateB} 
-                  onChange={e => setDateB(Number(e.target.value))} 
-                  className="bg-transparent text-[10px] font-black outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors cursor-pointer appearance-none"
-                >
-                  <option value="">Seleccionar...</option>
-                  {fechasUnicas.map(f => <option key={f} value={f}>{excelSerialToDateString(f)}</option>)}
-                </select>
-                <ChevronDown size={10} className="text-slate-400" />
-              </div>
-            </div>
+          <div className="flex items-center gap-2 bg-slate-100/50 rounded-xl px-4 py-1.5 border border-slate-200">
+            <Calendar size={14} className="text-brand-primary" />
+            <input 
+              type="date" 
+              value={serialToIso(dateA)} 
+              onChange={e => setDateA(isoToSerial(e.target.value))} 
+              className="bg-transparent text-[10px] font-bold outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors cursor-pointer"
+            />
+            <span className="text-slate-300 mx-1 font-bold">→</span>
+            <input 
+              type="date" 
+              value={serialToIso(dateB)} 
+              onChange={e => setDateB(isoToSerial(e.target.value))} 
+              className="bg-transparent text-[10px] font-bold outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors cursor-pointer"
+            />
           </div>
 
           <div className="flex gap-2">
