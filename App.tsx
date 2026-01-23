@@ -338,11 +338,29 @@ const App: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
+                  {/* Filtro de Fecha */}
+                  <div className="flex items-center gap-2 bg-slate-100/50 rounded-xl px-4 py-1.5 border border-slate-200">
+                    <Calendar size={14} className="text-brand-primary" />
+                    <input 
+                      type="date" 
+                      value={desde} 
+                      onChange={e => setDesde(e.target.value)} 
+                      className="bg-transparent text-[10px] font-bold outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors"
+                    />
+                    <span className="text-slate-300 mx-1 font-bold">→</span>
+                    <input 
+                      type="date" 
+                      value={hasta} 
+                      onChange={e => setHasta(e.target.value)} 
+                      className="bg-transparent text-[10px] font-bold outline-none uppercase text-slate-600 focus:text-brand-primary transition-colors"
+                    />
+                  </div>
+
                   <MultiSelect label="Almacén" options={Array.from(new Set(processedRows.map(r => r.sede))).filter(Boolean).sort()} value={selAlmacen} onChange={setSelAlmacen} />
                   <MultiSelect label="Centro" options={Array.from(new Set(processedRows.map(r => r.centro))).filter(Boolean).sort()} value={selCentro} onChange={setSelCentro} />
                   <MultiSelect label="Familia" options={Array.from(new Set(processedRows.map(r => r.familia))).filter(Boolean).sort()} value={selFamilia} onChange={setSelFamilia} />
                   <MultiSelect label="Estado" options={["SIN NOVEDAD", "FALTANTE", "SOBRANTE"]} value={selStatus} onChange={setSelStatus} icon={<Filter size={14} />} />
-                  <Button variant="ghost" size="sm" onClick={() => { setSelAlmacen([]); setSelCentro([]); setSelFamilia([]); setSelStatus([]); setSearchTerm(""); }} leftIcon={<X size={14} />} className="ml-auto uppercase tracking-tight text-[10px]">Limpiar</Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setSelAlmacen([]); setSelCentro([]); setSelFamilia([]); setSelStatus([]); setSearchTerm(""); setDesde(""); setHasta(""); }} leftIcon={<X size={14} />} className="ml-auto uppercase tracking-tight text-[10px]">Limpiar</Button>
                 </div>
               </div>
               <div className="overflow-x-auto">
